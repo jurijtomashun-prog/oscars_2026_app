@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Oscars 2026 · Prediction Challenge</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏆</text></svg>" />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body, #root { height: 100%; }
+  body { background: #07070f; color: #fff; font-family: 'Inter', sans-serif; overscroll-behavior: none; }
+  input::placeholder { color: rgba(255,255,255,0.3); }
+  input:focus { outline: none; border-color: rgba(201,168,76,0.5) !important; box-shadow: 0 0 0 3px rgba(201,168,76,0.08); }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(201,168,76,0.3); border-radius: 2px; }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(18px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes shimmer { 0%,100%{opacity:0.7} 50%{opacity:1} }
+  .fade-up { animation: fadeUp 0.55s ease forwards; }
+  .fade-up-1 { animation: fadeUp 0.55s 0.08s ease both; }
+  .fade-up-2 { animation: fadeUp 0.55s 0.16s ease both; }
+  .fade-up-3 { animation: fadeUp 0.55s 0.24s ease both; }
+  .fade-in { animation: fadeIn 0.3s ease; }
+  .btn-pick { transition: all 0.15s ease; }
+  .btn-pick:hover:not(:disabled) { transform: translateX(2px); background: rgba(255,255,255,0.06) !important; }
+  .tab-btn:hover { color: #F5D78E !important; }
+</style>
+</head>
+<body>
+<div id="root"><div style="display:flex;align-items:center;justify-content:center;height:100vh;font-size:2rem;">🏆</div></div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+<!-- React + Babel -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+<script>
+// ─── PASTE YOUR FIREBASE CONFIG HERE ──────────────────────────────────────────
+// Get this from: Firebase Console → Project Settings → Your apps → SDK setup
+const firebaseConfig = {
+  apiKey: "AIzaSyCdmc7skbljrY5FaTRm2ANTMX4YCoiZyOw",
+  authDomain: "oscars-predictions-27383.firebaseapp.com",
+  projectId: "oscars-predictions-27383",
+  storageBucket: "oscars-predictions-27383.firebasestorage.app",
+  messagingSenderId: "453525835601",
+  appId: "1:453525835601:web:7c2dea14313d2dcc63cd70"
+};
+// ──────────────────────────────────────────────────────────────────────────────
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+</script>
+
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
+
+// ─── Colors ──────────────────────────────────────────────────────────────────
+const GOLD = "#C9A84C", GOLD2 = "#F5D78E", DARK = "#07070f";
+const CARD = "#0f0f1e", CARD2 = "#161628", BORDER = "rgba(201,168,76,0.2)";
+const YEAR = "2026";
+const LOCK_TIME = new Date("2026-03-15T23:00:00Z");
+
+// ─── Nominees Data ───────────────────────────────────────────────────────────
+const CATEGORIES = [
+  { id:"picture", name:"Best Picture", emoji:"🏆", nominees:["Bugonia","F1","Frankenstein","Hamnet","Marty Supreme","One Battle After Another","The Secret Agent","Sentimental Value","Sinners","Train Dreams"] },
+  { id:"director", name:"Best Director", emoji:"🎬", nominees:["Paul Thomas Anderson — One Battle After Another","Ryan Coogler — Sinners","Chloé Zhao — Hamnet","Josh Safdie — Marty Supreme","Joachim Trier — Sentimental Value"] },
+  { id:"actor", name:"Best Actor", emoji:"🎭", nominees:["Timothée Chalamet — Marty Supreme","Leonardo DiCaprio — One Battle After Another","Ethan Hawke — Blue Moon","Michael B. Jordan — Sinners","Wagner Moura — The Secret Agent"] },
+  { id:"actress", name:"Best Actress", emoji:"🎭", nominees:["Jessie Buckley — Hamnet","Rose Byrne — If I Had Legs I'd Kick You","Renate Reinsve — Sentimental Value","Emma Stone — Bugonia","Kate Hudson — Song Sung Blue"] },
+  { id:"supp_actor", name:"Best Supporting Actor", emoji:"🎭", nominees:["Jacob Elordi — Frankenstein","Sean Penn — One Battle After Another","Stellan Skarsgård — Sentimental Value","Benicio del Toro — One Battle After Another","Delroy Lindo — Sinners"] },
+  { id:"supp_actress", name:"Best Supporting Actress", emoji:"🎭", nominees:["Elle Fanning — Sentimental Value","Inga Ibsdotter Lilleaas — Sentimental Value","Amy Madigan — Weapons","Wunmi Mosaku — Sinners","Teyana Taylor — One Battle After Another"] },
+  { id:"animated", name:"Best Animated Feature", emoji:"🎨", nominees:["Arco","Elio","KPop Demon Hunters","Little Amélie or the Character of Rain","Zootopia 2"] },
+  { id:"intl", name:"Best International Feature", emoji:"🌍", nominees:["The Secret Agent (Brazil)","It Was Just an Accident (France)","Sentimental Value (Norway)","Sirât (Spain)","The Voice of Hind Rajab (Tunisia)"] },
+  { id:"documentary", name:"Best Documentary Feature", emoji:"📽️", nominees:["The Perfect Neighbor","The Alabama Solution","Come See Me in the Good Light","Cutting Through Rocks","Mr. Nobody Against Putin"] },
+  { id:"casting", name:"Best Casting ✦ NEW", emoji:"🎯", nominees:["Hamnet","Marty Supreme","One Battle After Another","The Secret Agent","Sinners"] },
+  { id:"score", name:"Best Original Score", emoji:"🎵", nominees:["Bugonia — Jerskin Fendrix","Frankenstein — Alexandre Desplat","Hamnet — Max Richter","One Battle After Another — Jonny Greenwood","Sinners — Ludwig Göransson"] },
+  { id:"song", name:"Best Original Song", emoji:"🎶", nominees:['"Golden" — KPop Demon Hunters','"Train Dreams" — Train Dreams','"Dear Me" — Diane Warren: Relentless','"I Lied To You" — Sinners','"Sweet Dreams Of Joy" — Viva Verdi!'] },
+  { id:"orig_screenplay", name:"Best Original Screenplay", emoji:"✍️", nominees:["Blue Moon — Robert Kaplow","It Was Just an Accident — Jafar Panahi et al.","Marty Supreme — Bronstein & Safdie","Sentimental Value — Vogt & Trier","Sinners — Ryan Coogler"] },
+  { id:"adapt_screenplay", name:"Best Adapted Screenplay", emoji:"✍️", nominees:["Bugonia — Will Tracy","Frankenstein — Guillermo del Toro","Hamnet — Zhao & O'Farrell","One Battle After Another — Paul Thomas Anderson","Train Dreams — Bailey & Kwedar"] },
+  { id:"cinematography", name:"Best Cinematography", emoji:"📸", nominees:["Frankenstein","Marty Supreme","One Battle After Another","Sinners","Train Dreams"] },
+  { id:"editing", name:"Best Film Editing", emoji:"✂️", nominees:["F1","Marty Supreme","One Battle After Another","Sentimental Value","Sinners"] },
+  { id:"production", name:"Best Production Design", emoji:"🏛️", nominees:["Frankenstein","Hamnet","Marty Supreme","One Battle After Another","Sinners"] },
+  { id:"costume", name:"Best Costume Design", emoji:"👗", nominees:["Avatar: Fire and Ash","Frankenstein","Hamnet","Marty Supreme","Sinners"] },
+  { id:"makeup", name:"Best Makeup & Hairstyling", emoji:"💄", nominees:["Frankenstein","Kokuho","Sinners","The Smashing Machine","The Ugly Stepsister"] },
+  { id:"sound", name:"Best Sound", emoji:"🔊", nominees:["F1","Frankenstein","One Battle After Another","Sinners","Sirât"] },
+  { id:"vfx", name:"Best Visual Effects", emoji:"✨", nominees:["Avatar: Fire and Ash","F1","Jurassic World Rebirth","The Lost Bus","Sinners"] },
+  { id:"short_live", name:"Best Live Action Short", emoji:"🎞️", nominees:["Butcher's Stain","A Friend of Dorothy","Jane Austen's Period Drama","The Singers","Two People Exchanging Saliva"] },
+  { id:"short_animated", name:"Best Animated Short", emoji:"🖼️", nominees:["Butterfly","Forevergreen","The Girl Who Cried Pearls","Retirement Plan","The Three Sisters"] },
+  { id:"short_doc", name:"Best Documentary Short", emoji:"📹", nominees:["All the Empty Rooms","Armed Only with a Camera","Children No More","The Devil Is Busy","Perfectly a Strangeness"] },
+];
+
+// ─── Film extraction ──────────────────────────────────────────────────────────
+const getFilm = (catId, nominee) => {
+  const personFirst = ["actor","actress","supp_actor","supp_actress","director"];
+  if (personFirst.includes(catId)) return nominee.split(" — ")[1] || nominee;
+  if (catId === "score") return nominee.split(" — ")[0];
+  if (catId === "song") return (nominee.match(/— (.+)$/) || [])[1]?.trim() || nominee;
+  if (["orig_screenplay","adapt_screenplay"].includes(catId)) return nominee.split(" — ")[0];
+  if (catId === "intl") return nominee.split(" (")[0];
+  return nominee;
+};
+
+// ─── PIN hash ─────────────────────────────────────────────────────────────────
+const hashPin = (nick, pin) => btoa(`${nick.toLowerCase().trim()}:${pin}:oscars2026`).replace(/=/g,"");
+
+// ─── Firebase storage helpers ─────────────────────────────────────────────────
+const st = {
+  async get(key) {
+    try {
+      const doc = await db.collection("oscars").doc(key).get();
+      if (!doc.exists) return null;
+      return JSON.parse(doc.data().value);
+    } catch(e) { console.warn("st.get error", key, e); return null; }
+  },
+  async set(key, val) {
+    try {
+      await db.collection("oscars").doc(key).set({ value: JSON.stringify(val), updatedAt: new Date().toISOString() });
+    } catch(e) { console.warn("st.set error", key, e); }
+  }
+};
+
+// ─── Input style ──────────────────────────────────────────────────────────────
+const inp = {
+  background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)",
+  borderRadius: 10, padding: "13px 16px", fontSize: 15, color: "#fff",
+  width: "100%", fontFamily: "'Inter', sans-serif",
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// APP ROOT
+// ═══════════════════════════════════════════════════════════════════════════════
+function App() {
+  const [view, setView] = useState("login");
+  const [user, setUser] = useState(null);
+  const [loginForm, setLoginForm] = useState({ nickname:"", pin:"" });
+  const [isReg, setIsReg] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const [predictions, setPredictions] = useState({});
+  const [allPreds, setAllPreds] = useState({});
+  const [winners, setWinners] = useState({});
+  const [users, setUsers] = useState([]);
+  const [historyData, setHistoryData] = useState([]);
+  const [now, setNow] = useState(new Date());
+
+  const isLocked = now >= LOCK_TIME;
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const loadShared = async () => {
+    const [w, u, h] = await Promise.all([
+      st.get(`winners_${YEAR}`), st.get("osc_users"), st.get("osc_history")
+    ]);
+    const ul = u || [];
+    setWinners(w || {});
+    setUsers(ul);
+    setHistoryData(h || []);
+    return ul;
+  };
+
+  const loadPredictions = async (usersList, myNick) => {
+    const entries = await Promise.all(
+      (usersList || []).map(async u => [u.nickname, await st.get(`preds_${YEAR}_${u.nickname}`)])
+    );
+    const all = Object.fromEntries(entries.map(([n,p]) => [n, p || {}]));
+    setAllPreds(all);
+    if (myNick) setPredictions(all[myNick] || {});
+    return all;
+  };
+
+  // Real-time listener for winners (live during ceremony!)
+  useEffect(() => {
+    if (!user) return;
+    const unsub = db.collection("oscars").doc(`winners_${YEAR}`).onSnapshot(doc => {
+      if (doc.exists) {
+        try { setWinners(JSON.parse(doc.data().value)); } catch {}
+      }
+    });
+    return () => unsub();
+  }, [user]);
+
+  // Poll predictions every 20s
+  useEffect(() => {
+    if (!user) return;
+    const t = setInterval(async () => {
+      const ul = await st.get("osc_users") || [];
+      setUsers(ul);
+      await loadPredictions(ul, user.nickname);
+    }, 20000);
+    return () => clearInterval(t);
+  }, [user]);
+
+  const handleAuth = async () => {
+    setError("");
+    const { nickname, pin } = loginForm;
+    if (!nickname.trim() || pin.length < 4) { setError("Need a nickname and 4-digit PIN"); return; }
+    setLoading(true);
+    const currentUsers = await st.get("osc_users") || [];
+    const nick = nickname.trim();
+    const existing = currentUsers.find(u => u.nickname.toLowerCase() === nick.toLowerCase());
+
+    if (isReg) {
+      if (existing) { setError("Nickname already taken"); setLoading(false); return; }
+      if (currentUsers.length >= 6) { setError("Group is full (max 6 players)"); setLoading(false); return; }
+      const newUser = { nickname: nick, pinHash: hashPin(nick, pin), isAdmin: currentUsers.length === 0, joinedAt: new Date().toISOString() };
+      const updated = [...currentUsers, newUser];
+      await st.set("osc_users", updated);
+      await st.set(`preds_${YEAR}_${nick}`, {});
+      setUsers(updated);
+      await loadPredictions(updated, nick);
+      await loadShared();
+      setUser({ nickname: nick, isAdmin: newUser.isAdmin });
+      setView("ballot");
+    } else {
+      if (!existing) { setError("User not found — register first"); setLoading(false); return; }
+      if (existing.pinHash !== hashPin(nick, pin)) { setError("Wrong PIN, try again"); setLoading(false); return; }
+      const ul = await loadShared();
+      await loadPredictions(ul, existing.nickname);
+      setUser({ nickname: existing.nickname, isAdmin: existing.isAdmin });
+      setView("ballot");
+    }
+    setLoading(false);
+  };
+
+  const pick = async (catId, nominee) => {
+    if (isLocked) return;
+    const updated = { ...predictions, [catId]: nominee };
+    setPredictions(updated);
+    setAllPreds(prev => ({ ...prev, [user.nickname]: updated }));
+    await st.set(`preds_${YEAR}_${user.nickname}`, updated);
+  };
+
+  const markWinner = async (catId, nominee) => {
+    const updated = { ...winners };
+    if (nominee === null) delete updated[catId];
+    else updated[catId] = nominee;
+    setWinners(updated);
+    await st.set(`winners_${YEAR}`, updated);
+  };
+
+  const calcScore = (nick) =>
+    Object.entries(winners).filter(([c,w]) => (allPreds[nick] || {})[c] === w).length;
+
+  const countdown = () => {
+    const diff = LOCK_TIME - now;
+    if (diff <= 0) return "🔒 Locked — ceremony is live!";
+    const d = Math.floor(diff / 86400000);
+    const h = Math.floor((diff % 86400000) / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
+    if (d > 0) return `Locks in ${d}d ${h}h ${m}m`;
+    return `Locks in ${h}h ${m}m ${s}s`;
+  };
+
+  // ── LOGIN SCREEN ────────────────────────────────────────────────────────────
+  if (view === "login") return (
+    <div style={{minHeight:"100vh",background:DARK,display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center"}}>
+      <div style={{position:"fixed",inset:0,background:"radial-gradient(ellipse at 20% 50%, rgba(201,168,76,0.04) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(100,80,180,0.05) 0%, transparent 60%)",pointerEvents:"none"}} />
+      <div className="fade-up" style={{padding:"0 28px",width:"100%",maxWidth:380,position:"relative"}}>
+        <div style={{textAlign:"center",marginBottom:48}}>
+          <div style={{fontSize:60,marginBottom:12,lineHeight:1}}>🏆</div>
+          <div style={{fontSize:38,fontWeight:700,color:GOLD,letterSpacing:"0.15em",lineHeight:1,fontFamily:"'Cormorant Garamond', serif"}}>OSCARS</div>
+          <div style={{fontSize:22,fontWeight:400,color:GOLD2,letterSpacing:"0.3em",opacity:0.8,marginTop:2,fontFamily:"'Cormorant Garamond', serif"}}>2026</div>
+          <div style={{width:60,height:1,background:`linear-gradient(90deg, transparent, ${GOLD}, transparent)`,margin:"14px auto"}} />
+          <div style={{fontSize:13,color:"rgba(255,255,255,0.35)",letterSpacing:"0.05em"}}>Prediction Challenge · 98th Academy Awards</div>
+        </div>
+
+        <div className="fade-up-1" style={{display:"flex",background:"rgba(255,255,255,0.04)",borderRadius:12,padding:3,marginBottom:20,border:"1px solid rgba(255,255,255,0.08)"}}>
+          {["Sign In","Register"].map((label,i) => (
+            <button key={i} onClick={() => { setIsReg(i===1); setError(""); }}
+              style={{flex:1,padding:"10px",border:"none",borderRadius:10,cursor:"pointer",fontWeight:600,fontSize:14,fontFamily:"'Inter', sans-serif",transition:"all 0.25s",
+                background:isReg===(i===1)?`linear-gradient(135deg, ${GOLD}, #a07828)`:"transparent",
+                color:isReg===(i===1)?"#0a0a14":"rgba(255,255,255,0.4)"}}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="fade-up-2" style={{display:"flex",flexDirection:"column",gap:12}}>
+          <input style={inp} placeholder="Your nickname" value={loginForm.nickname}
+            onChange={e => setLoginForm(f=>({...f,nickname:e.target.value}))}
+            onKeyDown={e => e.key==="Enter" && handleAuth()} />
+          <input style={inp} placeholder="4-digit PIN" type="password" inputMode="numeric" maxLength={8}
+            value={loginForm.pin} onChange={e => setLoginForm(f=>({...f,pin:e.target.value}))}
+            onKeyDown={e => e.key==="Enter" && handleAuth()} />
+
+          {error && <div style={{color:"#ff8080",fontSize:13,textAlign:"center",padding:"2px 0"}}>{error}</div>}
+
+          <button onClick={handleAuth} disabled={loading}
+            style={{background:`linear-gradient(135deg, ${GOLD} 0%, #a07828 100%)`,color:"#070710",border:"none",borderRadius:12,padding:"14px",fontSize:16,fontWeight:700,cursor:"pointer",marginTop:4,opacity:loading?0.7:1,fontFamily:"'Cormorant Garamond', serif",letterSpacing:"0.08em",transition:"opacity 0.2s"}}>
+            {loading ? "…" : isReg ? "Create Account" : "Enter"}
+          </button>
+        </div>
+
+        <div className="fade-up-3" style={{textAlign:"center",marginTop:32,color:"rgba(255,255,255,0.2)",fontSize:11,lineHeight:1.8}}>
+          First to register becomes admin · Max 6 players<br/>
+          Predictions lock March 15, 2026 at 7 PM ET
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── MAIN SHELL ──────────────────────────────────────────────────────────────
+  const TABS = [
+    {id:"ballot",label:"Ballot",icon:"🗳️"},
+    {id:"leaderboard",label:"Board",icon:"📊"},
+    {id:"stats",label:"Stats",icon:"🎬"},
+    ...(user?.isAdmin ? [{id:"admin",label:"Admin",icon:"⚙️"}] : []),
+    {id:"history",label:"History",icon:"📅"},
+  ];
+
+  const pickedCount = Object.keys(predictions).length;
+
+  return (
+    <div style={{minHeight:"100vh",background:DARK,color:"#fff",fontFamily:"'Inter', sans-serif",maxWidth:480,margin:"0 auto",paddingBottom:70}}>
+
+      {/* Header */}
+      <div style={{position:"sticky",top:0,zIndex:50,background:`linear-gradient(180deg, ${DARK} 80%, transparent)`,backdropFilter:"blur(12px)",padding:"14px 18px 12px",borderBottom:`1px solid ${BORDER}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{fontSize:18,fontWeight:700,color:GOLD,fontFamily:"'Cormorant Garamond', serif",letterSpacing:"0.1em"}}>🏆 OSCARS 2026</div>
+            <div style={{fontSize:10.5,color:isLocked?"#ff7070":"rgba(255,255,255,0.35)",marginTop:2,fontWeight:500,letterSpacing:"0.03em"}}>
+              {isLocked?"🔒 ":"⏱ "}{countdown()}
+            </div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:13,color:GOLD,fontWeight:600}}>{user?.nickname}{user?.isAdmin?" 👑":""}</div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:2}}>{pickedCount}/{CATEGORIES.length} picked</div>
+          </div>
+        </div>
+      </div>
+
+      {/* View */}
+      <div className="fade-in" key={view}>
+        {view==="ballot"      && <BallotView categories={CATEGORIES} predictions={predictions} onPick={pick} winners={winners} isLocked={isLocked} />}
+        {view==="leaderboard" && <LeaderboardView users={users} allPreds={allPreds} winners={winners} calcScore={calcScore} myNick={user?.nickname} totalCats={CATEGORIES.length} />}
+        {view==="stats"       && <StatsView winners={winners} allPreds={allPreds} categories={CATEGORIES} users={users} />}
+        {view==="admin"       && user?.isAdmin && <AdminView categories={CATEGORIES} winners={winners} onMark={markWinner} users={users} allPreds={allPreds} historyData={historyData} year={YEAR} />}
+        {view==="history"     && <HistoryView historyData={historyData} />}
+      </div>
+
+      {/* Bottom nav */}
+      <nav style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:"rgba(12,12,24,0.97)",borderTop:`1px solid ${BORDER}`,display:"flex",zIndex:100,backdropFilter:"blur(16px)"}}>
+        {TABS.map(tab => {
+          const active = view===tab.id;
+          return (
+            <button key={tab.id} className="tab-btn" onClick={() => setView(tab.id)}
+              style={{flex:1,padding:"10px 4px 9px",background:"none",border:"none",color:active?GOLD:"rgba(255,255,255,0.35)",fontSize:9.5,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,fontFamily:"'Inter', sans-serif",fontWeight:active?600:400,letterSpacing:"0.04em",transition:"color 0.2s"}}>
+              <span style={{fontSize:19}}>{tab.icon}</span>
+              {tab.label.toUpperCase()}
+            </button>
+          );
+        })}
+      </nav>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// BALLOT VIEW
+// ═══════════════════════════════════════════════════════════════════════════════
+function BallotView({ categories, predictions, onPick, winners, isLocked }) {
+  const done = Object.keys(predictions).length, total = categories.length;
+  return (
+    <div>
+      {isLocked && (
+        <div style={{background:"linear-gradient(135deg, #8b0000, #5c0000)",padding:"10px 16px",textAlign:"center",fontSize:13,fontWeight:600,letterSpacing:"0.05em"}}>
+          🔒 Predictions are locked — the ceremony is live!
+        </div>
+      )}
+      <div style={{padding:"14px 18px 6px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:7,letterSpacing:"0.05em",fontWeight:500}}>
+          <span>YOUR PROGRESS</span>
+          <span style={{color:done===total?"#6be89a":GOLD}}>{done} / {total}</span>
+        </div>
+        <div style={{height:3,background:"rgba(255,255,255,0.06)",borderRadius:6,overflow:"hidden"}}>
+          <div style={{width:`${(done/total)*100}%`,height:"100%",background:`linear-gradient(90deg, ${GOLD}, #6be89a)`,borderRadius:6,transition:"width 0.4s ease"}} />
+        </div>
+      </div>
+
+      {categories.map(cat => {
+        const myPick = predictions[cat.id], winner = winners[cat.id];
+        const gotRight = myPick && winner && myPick===winner;
+        const gotWrong = myPick && winner && myPick!==winner;
+        return (
+          <div key={cat.id} style={{margin:"8px 14px",background:CARD2,borderRadius:14,border:`1px solid ${gotRight?"rgba(107,232,154,0.3)":gotWrong?"rgba(255,100,100,0.15)":BORDER}`,overflow:"hidden"}}>
+            <div style={{padding:"12px 14px 8px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:15}}>{cat.emoji}</span>
+                <span style={{fontSize:15,fontWeight:600,color:GOLD,fontFamily:"'Cormorant Garamond', serif",letterSpacing:"0.02em"}}>{cat.name}</span>
+              </div>
+              {gotRight && <span style={{fontSize:11,color:"#6be89a",fontWeight:600}}>✓ Correct!</span>}
+              {gotWrong && <span style={{fontSize:11,color:"#ff7070"}}>✗ Missed</span>}
+            </div>
+            <div style={{padding:"0 10px 10px",display:"flex",flexDirection:"column",gap:5}}>
+              {cat.nominees.map(nom => {
+                const isMyPick=myPick===nom, isWinner=winner===nom;
+                let bg="rgba(255,255,255,0.03)", border="rgba(255,255,255,0.07)", textColor="rgba(255,255,255,0.55)", icon="○";
+                if (isWinner)     { bg="rgba(201,168,76,0.12)"; border="rgba(201,168,76,0.4)";   textColor="#fff";     icon="🏆"; }
+                else if (isMyPick){ bg="rgba(80,100,220,0.15)"; border="rgba(120,140,255,0.35)"; textColor="#c5cbff"; icon="●"; }
+                return (
+                  <button key={nom} className="btn-pick" onClick={() => onPick(cat.id,nom)}
+                    disabled={isLocked || !!winner}
+                    style={{background:bg,border:`1px solid ${border}`,borderRadius:9,padding:"9px 12px",textAlign:"left",cursor:(isLocked||winner)?"default":"pointer",display:"flex",alignItems:"center",gap:10,width:"100%"}}>
+                    <span style={{fontSize:14,width:18,textAlign:"center",flexShrink:0,lineHeight:1}}>{icon}</span>
+                    <span style={{fontSize:13,color:textColor,fontWeight:(isMyPick||isWinner)?600:400,lineHeight:1.35}}>{nom}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+      <div style={{height:16}} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LEADERBOARD VIEW
+// ═══════════════════════════════════════════════════════════════════════════════
+function LeaderboardView({ users, allPreds, winners, calcScore, myNick, totalCats }) {
+  const totalWinners = Object.keys(winners).length;
+  const sorted = [...users].sort((a,b) => calcScore(b.nickname)-calcScore(a.nickname));
+  const MEDALS = ["🥇","🥈","🥉"];
+  return (
+    <div>
+      <div style={{margin:"14px 14px 10px",background:`linear-gradient(135deg, ${CARD2}, #0a0a1a)`,borderRadius:16,padding:"22px 24px",border:`1px solid ${BORDER}`,textAlign:"center"}}>
+        <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",letterSpacing:"0.1em",fontWeight:500}}>OSCARS AWARDED</div>
+        <div style={{fontSize:52,fontWeight:700,color:GOLD,lineHeight:1.1,marginTop:6,fontFamily:"'Cormorant Garamond', serif"}}>{totalWinners}</div>
+        <div style={{fontSize:13,color:"rgba(255,255,255,0.3)"}}>of {totalCats} categories</div>
+        <div style={{marginTop:14,height:3,background:"rgba(255,255,255,0.06)",borderRadius:6,overflow:"hidden"}}>
+          <div style={{width:`${(totalWinners/totalCats)*100}%`,height:"100%",background:`linear-gradient(90deg, ${GOLD}, #6be89a)`,borderRadius:6,transition:"width 0.6s ease"}} />
+        </div>
+      </div>
+
+      {sorted.map((u,i) => {
+        const s = calcScore(u.nickname), isMe = u.nickname===myNick;
+        const predCount = Object.keys(allPreds[u.nickname]||{}).length;
+        const pct = totalWinners>0?(s/totalWinners)*100:0;
+        return (
+          <div key={u.nickname} style={{margin:"6px 14px",background:isMe?`linear-gradient(135deg, rgba(201,168,76,0.08), rgba(201,168,76,0.03))`:CARD2,borderRadius:14,padding:"14px 16px",border:`1px solid ${isMe?"rgba(201,168,76,0.35)":"rgba(255,255,255,0.06)"}`}}>
+            <div style={{display:"flex",alignItems:"center",gap:12}}>
+              <div style={{fontSize:i<3?28:14,width:34,textAlign:"center",color:i>=3?"rgba(255,255,255,0.25)":undefined,fontWeight:700}}>{i<3?MEDALS[i]:`${i+1}`}</div>
+              <div style={{flex:1}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}>
+                  <span style={{fontWeight:600,fontSize:14,color:isMe?GOLD:"#e8e8e8"}}>{u.nickname}{isMe?" (you)":""}{u.isAdmin?" 👑":""}</span>
+                  <span style={{fontSize:20,fontWeight:700,color:GOLD,fontFamily:"'Cormorant Garamond', serif"}}>
+                    {s}<span style={{fontSize:12,color:"rgba(255,255,255,0.3)",fontFamily:"'Inter'",fontWeight:400}}>/{totalWinners||"?"}</span>
+                  </span>
+                </div>
+                <div style={{height:4,background:"rgba(255,255,255,0.06)",borderRadius:6,overflow:"hidden"}}>
+                  <div style={{width:`${pct}%`,height:"100%",background:isMe?`linear-gradient(90deg, ${GOLD}, #6be89a)`:"linear-gradient(90deg, #555, #777)",borderRadius:6,transition:"width 0.6s ease"}} />
+                </div>
+                <div style={{fontSize:10.5,color:"rgba(255,255,255,0.25)",marginTop:5,letterSpacing:"0.03em"}}>{predCount}/{totalCats} predictions submitted</div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+      <div style={{textAlign:"center",padding:"18px",color:"rgba(255,255,255,0.2)",fontSize:11}}>Live updates via Firebase · auto-synced</div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// STATS VIEW
+// ═══════════════════════════════════════════════════════════════════════════════
+function StatsView({ winners, allPreds, categories, users }) {
+  const [tab, setTab] = useState("films");
+  const filmNoms={}, filmWins={};
+  categories.forEach(cat => {
+    cat.nominees.forEach(nom => { const f=getFilm(cat.id,nom); filmNoms[f]=(filmNoms[f]||0)+1; });
+    if (winners[cat.id]) { const f=getFilm(cat.id,winners[cat.id]); filmWins[f]=(filmWins[f]||0)+1; }
+  });
+  const maxNoms = Math.max(...Object.values(filmNoms),1);
+  const films = Object.keys(filmNoms).sort((a,b)=>(filmWins[b]||0)-(filmWins[a]||0)||filmNoms[b]-filmNoms[a]).slice(0,18);
+
+  const catStats = categories.map(cat => {
+    if (!winners[cat.id]) return null;
+    const correct = users.filter(u => (allPreds[u.nickname]||{})[cat.id]===winners[cat.id]).length;
+    return { cat, correct, total:users.length, winner:winners[cat.id] };
+  }).filter(Boolean);
+
+  const popularPicks = categories.map(cat => {
+    const counts={};
+    users.forEach(u => { const p=(allPreds[u.nickname]||{})[cat.id]; if(p) counts[p]=(counts[p]||0)+1; });
+    return { cat, picks:Object.entries(counts).sort((a,b)=>b[1]-a[1]) };
+  }).filter(c=>c.picks.length>0);
+
+  const ts=(t)=>({padding:"8px 16px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,fontFamily:"'Inter', sans-serif",letterSpacing:"0.05em",background:tab===t?`linear-gradient(135deg, ${GOLD}, #a07828)`:"rgba(255,255,255,0.06)",color:tab===t?"#07070f":"rgba(255,255,255,0.5)",transition:"all 0.2s"});
+
+  return (
+    <div>
+      <div style={{padding:"12px 14px 6px",display:"flex",gap:6}}>
+        <button style={ts("films")} onClick={()=>setTab("films")}>🎬 Films</button>
+        <button style={ts("accuracy")} onClick={()=>setTab("accuracy")}>✅ Accuracy</button>
+        <button style={ts("consensus")} onClick={()=>setTab("consensus")}>👥 Consensus</button>
+      </div>
+
+      {tab==="films" && (
+        <div style={{padding:"6px 14px"}}>
+          {films.map(film => (
+            <div key={film} style={{background:CARD2,borderRadius:10,padding:"10px 14px",marginBottom:6,border:`1px solid ${filmWins[film]?"rgba(201,168,76,0.25)":"rgba(255,255,255,0.05)"}`}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontSize:13,fontWeight:filmWins[film]?600:400,color:filmWins[film]?"#fff":"rgba(255,255,255,0.55)",flex:1,marginRight:8,lineHeight:1.3}}>{film}</span>
+                <div style={{flexShrink:0,textAlign:"right"}}>
+                  {filmWins[film]>0 && <span style={{color:GOLD,fontWeight:700,marginRight:4}}>🏆 {filmWins[film]}</span>}
+                  <span style={{color:"rgba(255,255,255,0.25)",fontSize:11}}>{filmNoms[film]} nom{filmNoms[film]!==1?"s":""}</span>
+                </div>
+              </div>
+              <div style={{marginTop:7,height:3,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden"}}>
+                <div style={{width:`${(filmNoms[film]/maxNoms)*100}%`,height:"100%",background:filmWins[film]?`linear-gradient(90deg, ${GOLD}, ${GOLD2})`:"#2a2a3e",borderRadius:4}} />
+              </div>
+            </div>
+          ))}
+          {Object.keys(winners).length===0 && <div style={{textAlign:"center",padding:"40px 20px",color:"rgba(255,255,255,0.25)",fontSize:13}}>Film wins appear as the ceremony progresses</div>}
+        </div>
+      )}
+      {tab==="accuracy" && (
+        <div style={{padding:"6px 14px"}}>
+          {catStats.length===0 && <div style={{textAlign:"center",padding:"40px 20px",color:"rgba(255,255,255,0.25)",fontSize:13}}>Accuracy stats appear after winners are announced</div>}
+          {catStats.map(({cat,correct,total,winner}) => (
+            <div key={cat.id} style={{background:CARD2,borderRadius:10,padding:"11px 14px",marginBottom:6,border:"1px solid rgba(255,255,255,0.05)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",letterSpacing:"0.04em"}}>{cat.emoji} {cat.name.toUpperCase()}</div>
+                  <div style={{fontSize:13,color:GOLD,marginTop:3}}>🏆 {winner}</div>
+                </div>
+                <div style={{textAlign:"right",marginLeft:10}}>
+                  <span style={{fontSize:16,fontWeight:700,color:correct>0?"#6be89a":"rgba(255,255,255,0.25)",fontFamily:"'Cormorant Garamond', serif"}}>{correct}/{total}</span>
+                  <div style={{fontSize:10,color:"rgba(255,255,255,0.25)"}}>correct</div>
+                </div>
+              </div>
+              {total>0 && <div style={{marginTop:8,height:3,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden"}}><div style={{width:`${(correct/total)*100}%`,height:"100%",background:"#6be89a",borderRadius:4}} /></div>}
+            </div>
+          ))}
+        </div>
+      )}
+      {tab==="consensus" && (
+        <div style={{padding:"6px 14px"}}>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",padding:"4px 2px 10px",letterSpacing:"0.04em"}}>WHAT YOUR GROUP IS PICKING</div>
+          {popularPicks.length===0 && <div style={{textAlign:"center",padding:"40px 20px",color:"rgba(255,255,255,0.25)",fontSize:13}}>Appears once players submit predictions</div>}
+          {popularPicks.map(({cat,picks}) => (
+            <div key={cat.id} style={{background:CARD2,borderRadius:10,padding:"11px 14px",marginBottom:6,border:"1px solid rgba(255,255,255,0.05)"}}>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:6,letterSpacing:"0.04em"}}>{cat.emoji} {cat.name.toUpperCase()}</div>
+              {picks.slice(0,3).map(([nominee,count]) => (
+                <div key={nominee} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
+                  <span style={{fontSize:12,color:count===picks[0][1]?"#fff":"rgba(255,255,255,0.45)",flex:1,marginRight:8}}>{nominee}</span>
+                  <span style={{fontSize:12,color:GOLD,fontWeight:600}}>{count} pick{count!==1?"s":""}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ADMIN VIEW
+// ═══════════════════════════════════════════════════════════════════════════════
+function AdminView({ categories, winners, onMark, users, allPreds, historyData, year }) {
+  const [tab, setTab] = useState("winners");
+  const [saved, setSaved] = useState(false);
+
+  const saveToHistory = async () => {
+    const scores = users.map(u => ({
+      nickname: u.nickname,
+      score: Object.entries(winners).filter(([c,w]) => (allPreds[u.nickname]||{})[c]===w).length
+    }));
+    const entry = { year, winners, scores, savedAt: new Date().toISOString() };
+    const existing = (historyData||[]).filter(h=>h.year!==year);
+    await st.set("osc_history", [...existing, entry]);
+    setSaved(true); setTimeout(()=>setSaved(false),3000);
+  };
+
+  const ts=(t)=>({padding:"8px 16px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,fontFamily:"'Inter', sans-serif",letterSpacing:"0.04em",background:tab===t?`linear-gradient(135deg, ${GOLD}, #a07828)`:"rgba(255,255,255,0.06)",color:tab===t?"#07070f":"rgba(255,255,255,0.4)",transition:"all 0.2s"});
+
+  return (
+    <div>
+      <div style={{padding:"12px 14px 8px",display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+        <button style={ts("winners")} onClick={()=>setTab("winners")}>Mark Winners</button>
+        <button style={ts("members")} onClick={()=>setTab("members")}>Members</button>
+        <button onClick={saveToHistory}
+          style={{marginLeft:"auto",padding:"8px 14px",borderRadius:8,border:"none",cursor:"pointer",background:saved?"rgba(107,232,154,0.2)":"rgba(107,232,154,0.1)",color:saved?"#6be89a":"rgba(107,232,154,0.6)",fontWeight:600,fontSize:12,fontFamily:"'Inter', sans-serif",transition:"all 0.3s"}}>
+          {saved?"✓ Saved!":"📅 Save Year"}
+        </button>
+      </div>
+      <div style={{padding:"2px 16px 8px",fontSize:11,color:"rgba(255,255,255,0.25)",letterSpacing:"0.04em"}}>
+        {Object.keys(winners).length}/{categories.length} WINNERS MARKED · TAP WINNER TO TOGGLE
+      </div>
+
+      {tab==="winners" && categories.map(cat => (
+        <div key={cat.id} style={{margin:"6px 14px",background:CARD2,borderRadius:14,border:`1px solid ${BORDER}`,overflow:"hidden"}}>
+          <div style={{padding:"10px 14px 8px",display:"flex",alignItems:"center",gap:8}}>
+            <span>{cat.emoji}</span>
+            <span style={{fontSize:14,fontWeight:600,color:GOLD,fontFamily:"'Cormorant Garamond', serif",letterSpacing:"0.02em"}}>{cat.name}</span>
+            {winners[cat.id] && <span style={{marginLeft:"auto",fontSize:10,color:"#6be89a",fontWeight:600}}>✓ SET</span>}
+          </div>
+          <div style={{padding:"0 10px 10px",display:"flex",flexDirection:"column",gap:5}}>
+            {cat.nominees.map(nom => {
+              const isWinner=winners[cat.id]===nom;
+              const pickCount=users.filter(u=>(allPreds[u.nickname]||{})[cat.id]===nom).length;
+              return (
+                <button key={nom} onClick={()=>onMark(cat.id,isWinner?null:nom)}
+                  style={{background:isWinner?"rgba(201,168,76,0.15)":"rgba(255,255,255,0.03)",border:`1px solid ${isWinner?"rgba(201,168,76,0.45)":"rgba(255,255,255,0.07)"}`,borderRadius:9,padding:"9px 12px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:10,transition:"all 0.15s"}}>
+                  <span style={{fontSize:16,flexShrink:0}}>{isWinner?"🏆":"○"}</span>
+                  <span style={{fontSize:13,color:isWinner?"#fff":"rgba(255,255,255,0.5)",fontWeight:isWinner?600:400,flex:1}}>{nom}</span>
+                  {pickCount>0 && <span style={{fontSize:10,color:isWinner?GOLD:"rgba(255,255,255,0.25)",fontWeight:600}}>{pickCount} picked</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+
+      {tab==="members" && (
+        <div style={{padding:"0 14px"}}>
+          {users.map(u => {
+            const predCount=Object.keys(allPreds[u.nickname]||{}).length;
+            const score=Object.entries(winners).filter(([c,w])=>(allPreds[u.nickname]||{})[c]===w).length;
+            return (
+              <div key={u.nickname} style={{background:CARD2,borderRadius:12,padding:"13px 16px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid rgba(255,255,255,0.05)"}}>
+                <div>
+                  <div style={{fontWeight:600,fontSize:14}}>{u.nickname} {u.isAdmin?"👑":""}</div>
+                  <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:3}}>{predCount}/{CATEGORIES.length} predictions</div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:18,fontWeight:700,color:GOLD,fontFamily:"'Cormorant Garamond', serif"}}>{score}</div>
+                  <div style={{fontSize:10,color:"rgba(255,255,255,0.25)"}}>correct</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HISTORY VIEW
+// ═══════════════════════════════════════════════════════════════════════════════
+function HistoryView({ historyData }) {
+  const MEDALS = ["🥇","🥈","🥉"];
+  if (!historyData?.length) return (
+    <div style={{textAlign:"center",padding:"70px 24px",color:"rgba(255,255,255,0.25)"}}>
+      <div style={{fontSize:52}}>📅</div>
+      <div style={{marginTop:18,fontSize:15,fontFamily:"'Cormorant Garamond', serif",color:"rgba(255,255,255,0.35)"}}>No history yet</div>
+      <div style={{marginTop:8,fontSize:12,lineHeight:1.7}}>After each ceremony, the admin saves results.<br/>They'll appear here every year.</div>
+    </div>
+  );
+  return (
+    <div style={{padding:"10px 14px"}}>
+      {[...historyData].reverse().map(entry => {
+        const sorted=[...entry.scores].sort((a,b)=>b.score-a.score);
+        const total=Object.keys(entry.winners||{}).length;
+        return (
+          <div key={entry.year} style={{background:CARD2,borderRadius:16,padding:"18px",marginBottom:14,border:`1px solid ${BORDER}`}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <div style={{fontSize:22,fontWeight:700,color:GOLD,fontFamily:"'Cormorant Garamond', serif"}}>🏆 Oscars {entry.year}</div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>{new Date(entry.savedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>
+            </div>
+            {sorted.map((s,i) => (
+              <div key={s.nickname} style={{display:"flex",alignItems:"center",padding:"8px 0",borderBottom:i<sorted.length-1?"1px solid rgba(255,255,255,0.05)":"none",gap:12}}>
+                <span style={{width:28,fontSize:i<3?20:13,textAlign:"center",color:i>=3?"rgba(255,255,255,0.3)":undefined,fontWeight:700}}>{i<3?MEDALS[i]:`${i+1}.`}</span>
+                <span style={{flex:1,fontWeight:i===0?700:400,color:i===0?GOLD:"rgba(255,255,255,0.7)",fontSize:14}}>{s.nickname}</span>
+                <span style={{color:GOLD,fontWeight:700,fontFamily:"'Cormorant Garamond', serif",fontSize:17}}>
+                  {s.score}<span style={{color:"rgba(255,255,255,0.25)",fontFamily:"'Inter'",fontWeight:400,fontSize:11}}>/{total}</span>
+                </span>
+                <span style={{fontSize:11,color:"rgba(255,255,255,0.3)",width:35,textAlign:"right"}}>{total>0?Math.round((s.score/total)*100):0}%</span>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Mount ────────────────────────────────────────────────────────────────────
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
