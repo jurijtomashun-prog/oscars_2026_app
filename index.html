@@ -65,7 +65,7 @@ const { useState, useEffect, useCallback, useRef } = React;
 const GOLD = "#C9A84C", GOLD2 = "#F5D78E", DARK = "#07070f";
 const CARD = "#0f0f1e", CARD2 = "#161628", BORDER = "rgba(201,168,76,0.2)";
 const YEAR = "2026";
-const LOCK_TIME = new Date("2026-03-15T23:00:00Z");
+const LOCK_TIME = new Date("2026-03-15T23:59:00Z");
 
 // ─── Nominees Data ───────────────────────────────────────────────────────────
 const CATEGORIES = [
@@ -505,7 +505,7 @@ function StatsView({ winners, allPreds, categories, users }) {
       <div style={{padding:"12px 14px 6px",display:"flex",gap:6}}>
         <button style={ts("films")} onClick={()=>setTab("films")}>🎬 Films</button>
         <button style={ts("accuracy")} onClick={()=>setTab("accuracy")}>✅ Accuracy</button>
-        <button style={ts("consensus")} onClick={()=>setTab("consensus")}>👥 Consensus</button>
+    {/*    <button style={ts("consensus")} onClick={()=>setTab("consensus")}>👥 Consensus</button> */}
       </div>
 
       {tab==="films" && (
