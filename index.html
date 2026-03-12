@@ -270,7 +270,7 @@ function App() {
 
     if (isReg) {
       if (existing) { setError("Nickname already taken"); setLoading(false); return; }
-      if (currentUsers.length >= 6) { setError("Group is full (max 6 players)"); setLoading(false); return; }
+      if (currentUsers.length >= 20) { setError("Group is full (max 20 players)"); setLoading(false); return; }
       const newUser = { nickname: nick, pinHash: hashPin(nick, pin), isAdmin: currentUsers.length === 0, joinedAt: new Date().toISOString() };
       const updated = [...currentUsers, newUser];
       await st.set("osc_users", updated);
@@ -407,7 +407,7 @@ function App() {
         </div>
 
         <div className="fade-up-3" style={{textAlign:"center",marginTop:32,color:"rgba(255,255,255,0.2)",fontSize:11,lineHeight:1.8}}>
-          First to register becomes admin · Max 6 players<br/>
+          First to register becomes admin · Max 20 players<br/>
           Predictions lock March 15, 2026 at 7 PM ET
         </div>
       </div>
