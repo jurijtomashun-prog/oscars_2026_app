@@ -95,6 +95,60 @@ const CATEGORIES = [
   { id:"short_doc", name:"Best Documentary Short", emoji:"📹", nominees:["All the Empty Rooms","Armed Only with a Camera","Children No More","The Devil Is Busy","Perfectly a Strangeness"] },
 ];
 
+// ─── Achievements ─────────────────────────────────────────────────────────────
+const ACHIEVEMENTS = [
+  {
+    id:"oracle", icon:"🔮", name:"Oracle of Hollywood",
+    desc:"Got 18+ categories correct — you basically work for PricewaterhouseCoopers",
+    check:(nick,ap,w)=>Object.entries(w).filter(([c,v])=>(ap[nick]||{})[c]===v).length>=18
+  },
+  {
+    id:"snubbed", icon:"😭", name:"Snubbed Again",
+    desc:"Finished with 0 correct — the Academy has betrayed you personally",
+    check:(nick,ap,w)=>Object.keys(w).length>=10&&Object.entries(w).filter(([c,v])=>(ap[nick]||{})[c]===v).length===0
+  },
+  {
+    id:"nordic", icon:"🇳🇴", name:"Scandinavian Conspiracy",
+    desc:"Picked Sentimental Value to win 3+ categories — Trier's biggest fan in the room",
+    check:(nick,ap)=>Object.values(ap[nick]||{}).filter(v=>v?.includes("Sentimental Value")).length>=3
+  },
+  {
+    id:"sinner", icon:"😈", name:"All Sinners, No Saints",
+    desc:"Predicted Sinners in every single category it was nominated for — you went ALL in",
+    check:(nick,ap,w,us,cats)=>{ const cc=cats.filter(c=>c.nominees.some(n=>n.includes("Sinners"))); return cc.length>0&&cc.every(c=>(ap[nick]||{})[c.id]?.includes("Sinners")); }
+  },
+  {
+    id:"typeA", icon:"📋", name:"Type A Personality",
+    desc:"Submitted all 24 predictions before lock — you take this way too seriously (we respect it)",
+    check:(nick,ap,w,us,cats)=>Object.keys(ap[nick]||{}).length===cats.length
+  },
+  {
+    id:"darkhorse", icon:"🐴", name:"Dark Horse Whisperer",
+    desc:"Correctly called a winner that literally nobody else picked — psychic powers confirmed",
+    check:(nick,ap,w,users)=>Object.entries(w).some(([cat,win])=>(ap[nick]||{})[cat]===win&&users.filter(u=>u.nickname!==nick).every(u=>(ap[u.nickname]||{})[cat]!==win))
+  },
+  {
+    id:"champion", icon:"👑", name:"This Is My Oscar",
+    desc:"Finished #1 on the leaderboard — collect your statue",
+    check:(nick,ap,w,users)=>{ if(Object.keys(w).length<5)return false; const my=Object.entries(w).filter(([c,v])=>(ap[nick]||{})[c]===v).length; return users.every(u=>Object.entries(w).filter(([c,v])=>(ap[u.nickname]||{})[c]===v).length<=my); }
+  },
+  {
+    id:"pta", icon:"🎬", name:"PTA Superfan",
+    desc:"Bet on 'One Battle After Another' in 4+ categories — you've read all the IndieWire think-pieces",
+    check:(nick,ap)=>Object.values(ap[nick]||{}).filter(v=>v?.includes("One Battle After Another")).length>=4
+  },
+  {
+    id:"acting_coach", icon:"🎭", name:"The Acting Coach",
+    desc:"Correctly predicted both Best Actor and Best Actress in the same year",
+    check:(nick,ap,w)=>!!(w.actor&&w.actress&&(ap[nick]||{}).actor===w.actor&&(ap[nick]||{}).actress===w.actress)
+  },
+  {
+    id:"fashionista", icon:"👗", name:"On The Red Carpet",
+    desc:"Nailed both Best Costume Design and Best Production Design — a true aesthete",
+    check:(nick,ap,w)=>!!(w.costume&&w.production&&(ap[nick]||{}).costume===w.costume&&(ap[nick]||{}).production===w.production)
+  },
+];
+
 // ─── Film extraction ──────────────────────────────────────────────────────────
 const getFilm = (catId, nominee) => {
   const personFirst = ["actor","actress","supp_actor","supp_actress","director"];
@@ -292,6 +346,12 @@ function App() {
     setAllPreds(newAllPreds);
   };
 
+  const deleteHistoryYear = async (yr) => {
+    const updated = (historyData || []).filter(h => h.year !== yr);
+    await st.set("osc_history", updated);
+    setHistoryData(updated);
+  };
+
   const calcScore = (nick) =>
     Object.entries(winners).filter(([c,w]) => (allPreds[nick] || {})[c] === w).length;
 
@@ -359,6 +419,7 @@ function App() {
     {id:"ballot",label:"Ballot",icon:"🗳️"},
     {id:"leaderboard",label:"Board",icon:"📊"},
     {id:"stats",label:"Stats",icon:"🎬"},
+    {id:"awards",label:"Wrap",icon:"🏅"},
     ...(user?.isAdmin ? [{id:"admin",label:"Admin",icon:"⚙️"}] : []),
     {id:"history",label:"History",icon:"📅"},
   ];
@@ -389,8 +450,9 @@ function App() {
         {view==="ballot"      && <BallotView categories={CATEGORIES} predictions={predictions} onPick={pick} winners={winners} isLocked={isLocked} />}
         {view==="leaderboard" && <LeaderboardView users={users} allPreds={allPreds} winners={winners} calcScore={calcScore} myNick={user?.nickname} totalCats={CATEGORIES.length} />}
         {view==="stats"       && <StatsView winners={winners} allPreds={allPreds} categories={CATEGORIES} users={users} />}
+        {view==="awards"      && <AwardsView myNick={user?.nickname} users={users} allPreds={allPreds} winners={winners} categories={CATEGORIES} />}
         {view==="admin"       && user?.isAdmin && <AdminView categories={CATEGORIES} winners={winners} onMark={markWinner} onRenameUser={renameUser} onDeleteUser={deleteUser} myNick={user?.nickname} users={users} allPreds={allPreds} historyData={historyData} year={YEAR} />}
-        {view==="history"     && <HistoryView historyData={historyData} />}
+        {view==="history"     && <HistoryView historyData={historyData} onDeleteYear={user?.isAdmin ? deleteHistoryYear : null} />}
       </div>
 
       {/* Bottom nav */}
@@ -546,10 +608,10 @@ function StatsView({ winners, allPreds, categories, users }) {
 
   return (
     <div>
-      <div style={{padding:"12px 14px 6px",display:"flex",gap:6}}>
+      <div style={{padding:"12px 14px 6px",display:"flex",gap:6,flexWrap:"wrap"}}>
         <button style={ts("films")} onClick={()=>setTab("films")}>🎬 Films</button>
         <button style={ts("accuracy")} onClick={()=>setTab("accuracy")}>✅ Accuracy</button>
-    {/*    <button style={ts("consensus")} onClick={()=>setTab("consensus")}>👥 Consensus</button> */}
+        <button style={ts("difficulty")} onClick={()=>setTab("difficulty")}>🎯 Difficulty</button>
       </div>
 
       {tab==="films" && (
@@ -589,6 +651,36 @@ function StatsView({ winners, allPreds, categories, users }) {
               {total>0 && <div style={{marginTop:8,height:3,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden"}}><div style={{width:`${(correct/total)*100}%`,height:"100%",background:"#6be89a",borderRadius:4}} /></div>}
             </div>
           ))}
+        </div>
+      )}
+
+      {tab==="difficulty" && (
+        <div style={{padding:"6px 14px"}}>
+          {catStats.length===0 && <div style={{textAlign:"center",padding:"40px 20px",color:"rgba(255,255,255,0.25)",fontSize:13}}>Difficulty ranks appear after winners are announced</div>}
+          {catStats.length>0 && <div style={{fontSize:11,color:"rgba(255,255,255,0.25)",padding:"4px 2px 10px",letterSpacing:"0.05em",fontWeight:500}}>HARDEST → EASIEST · % of group who got it right</div>}
+          {[...catStats].sort((a,b)=>(a.correct/a.total)-(b.correct/b.total)).map(({cat,correct,total,winner},idx) => {
+            const pct=total>0?Math.round((correct/total)*100):0;
+            const col=pct>=75?"#6be89a":pct>=40?GOLD:"#ff7070";
+            return (
+              <div key={cat.id} style={{background:CARD2,borderRadius:10,padding:"11px 14px",marginBottom:6,border:"1px solid rgba(255,255,255,0.05)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",letterSpacing:"0.04em",marginBottom:3}}>
+                      <span style={{color:col,fontWeight:700,marginRight:5}}>#{idx+1}</span>{cat.emoji} {cat.name.toUpperCase()}
+                    </div>
+                    <div style={{fontSize:13,color:GOLD}}>🏆 {winner}</div>
+                  </div>
+                  <div style={{textAlign:"right",marginLeft:12}}>
+                    <div style={{fontSize:22,fontWeight:700,color:col,fontFamily:"'Cormorant Garamond', serif",lineHeight:1}}>{pct}%</div>
+                    <div style={{fontSize:10,color:"rgba(255,255,255,0.25)"}}>{correct}/{total} got it</div>
+                  </div>
+                </div>
+                <div style={{marginTop:8,height:3,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden"}}>
+                  <div style={{width:`${pct}%`,height:"100%",background:col,borderRadius:4,transition:"width 0.5s ease"}} />
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     {/*   {tab==="consensus" && (
@@ -770,10 +862,118 @@ function AdminView({ categories, winners, onMark, onRenameUser, onDeleteUser, my
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// AWARDS VIEW  (My Card + Badges)
+// ═══════════════════════════════════════════════════════════════════════════════
+function AwardsView({ myNick, users, allPreds, winners, categories }) {
+  const [tab, setTab] = useState("card");
+  const totalWinners = Object.keys(winners).length;
+  const myPreds = allPreds[myNick] || {};
+  const myScore = Object.entries(winners).filter(([c,w]) => myPreds[c]===w).length;
+  const pct = totalWinners>0 ? Math.round((myScore/totalWinners)*100) : 0;
+
+  const ts=(t)=>({padding:"8px 16px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,fontFamily:"'Inter', sans-serif",letterSpacing:"0.04em",background:tab===t?`linear-gradient(135deg, ${GOLD}, #a07828)`:"rgba(255,255,255,0.06)",color:tab===t?"#07070f":"rgba(255,255,255,0.4)",transition:"all 0.2s"});
+
+  const userAchievements = users.map(u => ({
+    user: u,
+    badges: ACHIEVEMENTS.filter(a => a.check(u.nickname, allPreds, winners, users, categories))
+  }));
+
+  return (
+    <div>
+      <div style={{padding:"12px 14px 8px",display:"flex",gap:6}}>
+        <button style={ts("card")} onClick={()=>setTab("card")}>🃏 My Card</button>
+        <button style={ts("badges")} onClick={()=>setTab("badges")}>🏅 Badges</button>
+      </div>
+
+      {tab==="card" && (
+        <div style={{padding:"0 14px"}}>
+          <div style={{background:"linear-gradient(135deg, #1a1330, #0e1628)",borderRadius:16,padding:"24px 20px",marginBottom:12,border:`1px solid ${BORDER}`,textAlign:"center"}}>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",letterSpacing:"0.15em",marginBottom:8}}>OSCARS 2026 · YOUR WRAP</div>
+            <div style={{fontSize:34,fontWeight:700,color:GOLD,fontFamily:"'Cormorant Garamond', serif",lineHeight:1}}>{myNick}</div>
+            <div style={{width:40,height:1,background:`linear-gradient(90deg, transparent, ${GOLD}, transparent)`,margin:"12px auto"}} />
+            <div style={{fontSize:58,fontWeight:700,color:GOLD,fontFamily:"'Cormorant Garamond', serif",lineHeight:1}}>{myScore}</div>
+            <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",marginTop:4"}}>/{totalWinners} correct · {pct}%</div>
+            <div style={{marginTop:14,height:4,background:"rgba(255,255,255,0.06)",borderRadius:6,overflow:"hidden"}}>
+              <div style={{width:`${pct}%`,height:"100%",background:`linear-gradient(90deg, ${GOLD}, #6be89a)`,borderRadius:6,transition:"width 0.6s ease"}} />
+            </div>
+            {totalWinners===0 && <div style={{fontSize:11,color:"rgba(255,255,255,0.2)",marginTop:10}}>Your card fills in as winners are announced</div>}
+          </div>
+
+          {categories.map(cat => {
+            const myPick=myPreds[cat.id], winner=winners[cat.id];
+            const correct=myPick&&winner&&myPick===winner;
+            const wrong=myPick&&winner&&myPick!==winner;
+            return (
+              <div key={cat.id} style={{background:CARD2,borderRadius:10,padding:"10px 13px",marginBottom:5,border:`1px solid ${correct?"rgba(107,232,154,0.2)":wrong?"rgba(255,100,100,0.1)":"rgba(255,255,255,0.04)"}`}}>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.28)",letterSpacing:"0.05em",marginBottom:4}}>{cat.emoji} {cat.name.toUpperCase()}</div>
+                {myPick ? (
+                  <div>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{fontSize:13,color:correct?"#6be89a":wrong?"#ff7070":"rgba(255,255,255,0.5)",fontWeight:(correct||wrong)?600:400,flex:1,lineHeight:1.35}}>{myPick}</span>
+                      <span style={{fontSize:15,flexShrink:0}}>{correct?"✓":wrong?"✗":"·"}</span>
+                    </div>
+                    {wrong&&winner&&<div style={{fontSize:11,color:GOLD,marginTop:3}}>🏆 {winner}</div>}
+                  </div>
+                ) : (
+                  <div style={{fontSize:13,color:"rgba(255,255,255,0.2)",fontStyle:"italic"}}>No prediction submitted</div>
+                )}
+              </div>
+            );
+          })}
+          <div style={{height:16}} />
+        </div>
+      )}
+
+      {tab==="badges" && (
+        <div style={{padding:"0 14px"}}>
+          {totalWinners<5 && (
+            <div style={{textAlign:"center",padding:"20px",background:CARD2,borderRadius:12,marginBottom:12,border:`1px solid ${BORDER}`}}>
+              <div style={{fontSize:36}}>🏅</div>
+              <div style={{fontSize:13,color:"rgba(255,255,255,0.3)",marginTop:8,lineHeight:1.6}}>Badges unlock as winners are announced.<br/>Check back during the ceremony!</div>
+            </div>
+          )}
+          {userAchievements.map(({user,badges}) => (
+            <div key={user.nickname} style={{background:CARD2,borderRadius:12,padding:"13px 14px",marginBottom:8,border:`1px solid ${user.nickname===myNick?"rgba(201,168,76,0.2)":"rgba(255,255,255,0.05)"}`}}>
+              <div style={{fontSize:13,fontWeight:600,color:user.nickname===myNick?GOLD:"#e8e8e8",marginBottom:badges.length?10:4}}>
+                {user.nickname}{user.nickname===myNick?" (you)":""}{user.isAdmin?" 👑":""}
+              </div>
+              {badges.length>0 ? (
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  {badges.map(badge => (
+                    <div key={badge.id} style={{display:"flex",alignItems:"flex-start",gap:10,background:"rgba(255,255,255,0.03)",borderRadius:8,padding:"8px 10px"}}>
+                      <span style={{fontSize:22,lineHeight:1,flexShrink:0}}>{badge.icon}</span>
+                      <div>
+                        <div style={{fontSize:12,fontWeight:600,color:GOLD2}}>{badge.name}</div>
+                        <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:2,lineHeight:1.4}}>{badge.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.2)",fontStyle:"italic"}}>
+                  {totalWinners>=5?"No badges earned yet":""}
+                </div>
+              )}
+            </div>
+          ))}
+          <div style={{height:16}} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // HISTORY VIEW
 // ═══════════════════════════════════════════════════════════════════════════════
-function HistoryView({ historyData }) {
+function HistoryView({ historyData, onDeleteYear }) {
   const MEDALS = ["🥇","🥈","🥉"];
+  const [confirmYear, setConfirmYear] = React.useState(null);
+
+  const doDelete = async (yr) => {
+    await onDeleteYear(yr);
+    setConfirmYear(null);
+  };
   if (!historyData?.length) return (
     <div style={{textAlign:"center",padding:"70px 24px",color:"rgba(255,255,255,0.25)"}}>
       <div style={{fontSize:52}}>📅</div>
@@ -790,7 +990,18 @@ function HistoryView({ historyData }) {
           <div key={entry.year} style={{background:CARD2,borderRadius:16,padding:"18px",marginBottom:14,border:`1px solid ${BORDER}`}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
               <div style={{fontSize:22,fontWeight:700,color:GOLD,fontFamily:"'Cormorant Garamond', serif"}}>🏆 Oscars {entry.year}</div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>{new Date(entry.savedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>{new Date(entry.savedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>
+                {onDeleteYear && (
+                  confirmYear === entry.year
+                    ? <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                        <span style={{fontSize:11,color:"rgba(255,100,100,0.7)"}}>Remove?</span>
+                        <button onClick={()=>doDelete(entry.year)} style={{background:"rgba(200,40,40,0.2)",border:"1px solid rgba(200,40,40,0.4)",borderRadius:6,padding:"3px 9px",color:"#ff8080",cursor:"pointer",fontSize:11,fontWeight:600}}>Yes</button>
+                        <button onClick={()=>setConfirmYear(null)} style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:6,padding:"3px 9px",color:"rgba(255,255,255,0.35)",cursor:"pointer",fontSize:11}}>No</button>
+                      </div>
+                    : <button onClick={()=>setConfirmYear(entry.year)} style={{background:"rgba(200,40,40,0.07)",border:"1px solid rgba(200,40,40,0.15)",borderRadius:6,padding:"4px 8px",color:"rgba(255,100,100,0.4)",cursor:"pointer",fontSize:12,lineHeight:1}}>🗑️</button>
+                )}
+              </div>
             </div>
             {sorted.map((s,i) => (
               <div key={s.nickname} style={{display:"flex",alignItems:"center",padding:"8px 0",borderBottom:i<sorted.length-1?"1px solid rgba(255,255,255,0.05)":"none",gap:12}}>
