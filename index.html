@@ -122,6 +122,11 @@ const st = {
     try {
       await db.collection("oscars").doc(key).set({ value: JSON.stringify(val), updatedAt: new Date().toISOString() });
     } catch(e) { console.warn("st.set error", key, e); }
+  },
+  async del(key) {
+    try {
+      await db.collection("oscars").doc(key).delete();
+    } catch(e) { console.warn("st.del error", key, e); }
   }
 };
 
@@ -248,6 +253,35 @@ function App() {
     await st.set(`winners_${YEAR}`, updated);
   };
 
+  const renameUser = async (oldNick, newNick, newPin) => {
+    if (users.some(u => u.nickname.toLowerCase() === newNick.toLowerCase() && u.nickname !== oldNick)) {
+      throw new Error("Nickname already taken");
+    }
+    const preds = await st.get(`preds_${YEAR}_${oldNick}`) || {};
+    const updatedUsers = users.map(u =>
+      u.nickname === oldNick ? { ...u, nickname: newNick, pinHash: hashPin(newNick, newPin) } : u
+    );
+    await st.set("osc_users", updatedUsers);
+    await st.set(`preds_${YEAR}_${newNick}`, preds);
+    await st.del(`preds_${YEAR}_${oldNick}`);
+    if (historyData && historyData.length > 0) {
+      const updatedHistory = historyData.map(entry => ({
+        ...entry,
+        scores: entry.scores.map(s => s.nickname === oldNick ? { ...s, nickname: newNick } : s)
+      }));
+      await st.set("osc_history", updatedHistory);
+      setHistoryData(updatedHistory);
+    }
+    setUsers(updatedUsers);
+    const newAllPreds = { ...allPreds, [newNick]: preds };
+    delete newAllPreds[oldNick];
+    setAllPreds(newAllPreds);
+    if (user.nickname === oldNick) {
+      setUser(prev => ({ ...prev, nickname: newNick }));
+      setPredictions(preds);
+    }
+  };
+
   const calcScore = (nick) =>
     Object.entries(winners).filter(([c,w]) => (allPreds[nick] || {})[c] === w).length;
 
@@ -345,7 +379,7 @@ function App() {
         {view==="ballot"      && <BallotView categories={CATEGORIES} predictions={predictions} onPick={pick} winners={winners} isLocked={isLocked} />}
         {view==="leaderboard" && <LeaderboardView users={users} allPreds={allPreds} winners={winners} calcScore={calcScore} myNick={user?.nickname} totalCats={CATEGORIES.length} />}
         {view==="stats"       && <StatsView winners={winners} allPreds={allPreds} categories={CATEGORIES} users={users} />}
-        {view==="admin"       && user?.isAdmin && <AdminView categories={CATEGORIES} winners={winners} onMark={markWinner} users={users} allPreds={allPreds} historyData={historyData} year={YEAR} />}
+        {view==="admin"       && user?.isAdmin && <AdminView categories={CATEGORIES} winners={winners} onMark={markWinner} onRenameUser={renameUser} users={users} allPreds={allPreds} historyData={historyData} year={YEAR} />}
         {view==="history"     && <HistoryView historyData={historyData} />}
       </div>
 
@@ -571,9 +605,28 @@ function StatsView({ winners, allPreds, categories, users }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // ADMIN VIEW
 // ═══════════════════════════════════════════════════════════════════════════════
-function AdminView({ categories, winners, onMark, users, allPreds, historyData, year }) {
+function AdminView({ categories, winners, onMark, onRenameUser, users, allPreds, historyData, year }) {
   const [tab, setTab] = useState("winners");
   const [saved, setSaved] = useState(false);
+  const [renamingUser, setRenamingUser] = useState(null);
+  const [newNick, setNewNick] = useState("");
+  const [newPinVal, setNewPinVal] = useState("");
+  const [renameError, setRenameError] = useState("");
+  const [renameLoading, setRenameLoading] = useState(false);
+
+  const doRename = async () => {
+    if (!newNick.trim()) { setRenameError("Enter a new nickname"); return; }
+    if (newPinVal.length < 4) { setRenameError("PIN must be at least 4 digits"); return; }
+    setRenameLoading(true);
+    setRenameError("");
+    try {
+      await onRenameUser(renamingUser.nickname, newNick.trim(), newPinVal);
+      setRenamingUser(null);
+    } catch(e) {
+      setRenameError(e.message || "Rename failed");
+    }
+    setRenameLoading(false);
+  };
 
   const saveToHistory = async () => {
     const scores = users.map(u => ({
@@ -633,17 +686,43 @@ function AdminView({ categories, winners, onMark, users, allPreds, historyData, 
             const score=Object.entries(winners).filter(([c,w])=>(allPreds[u.nickname]||{})[c]===w).length;
             return (
               <div key={u.nickname} style={{background:CARD2,borderRadius:12,padding:"13px 16px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid rgba(255,255,255,0.05)"}}>
-                <div>
+                <div style={{flex:1}}>
                   <div style={{fontWeight:600,fontSize:14}}>{u.nickname} {u.isAdmin?"👑":""}</div>
                   <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:3}}>{predCount}/{CATEGORIES.length} predictions</div>
                 </div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{fontSize:18,fontWeight:700,color:GOLD,fontFamily:"'Cormorant Garamond', serif"}}>{score}</div>
-                  <div style={{fontSize:10,color:"rgba(255,255,255,0.25)"}}>correct</div>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <button onClick={()=>{ setRenamingUser(u); setNewNick(u.nickname); setNewPinVal(""); setRenameError(""); }}
+                    style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"6px 10px",color:"rgba(255,255,255,0.45)",cursor:"pointer",fontSize:13,lineHeight:1}}>
+                    ✏️
+                  </button>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:18,fontWeight:700,color:GOLD,fontFamily:"'Cormorant Garamond', serif"}}>{score}</div>
+                    <div style={{fontSize:10,color:"rgba(255,255,255,0.25)"}}>correct</div>
+                  </div>
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {renamingUser && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}} onClick={()=>setRenamingUser(null)}>
+          <div style={{background:"#161628",borderRadius:16,padding:"24px",width:"100%",maxWidth:340,border:`1px solid ${BORDER}`}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:18,fontWeight:700,color:GOLD,fontFamily:"'Cormorant Garamond', serif",marginBottom:4}}>Rename Player</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",marginBottom:18}}>Currently: <span style={{color:"rgba(255,255,255,0.65)",fontWeight:600}}>{renamingUser.nickname}</span></div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <input style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:10,padding:"13px 16px",fontSize:15,color:"#fff",width:"100%",fontFamily:"'Inter', sans-serif"}} placeholder="New nickname" value={newNick} onChange={e=>setNewNick(e.target.value)} />
+              <input style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:10,padding:"13px 16px",fontSize:15,color:"#fff",width:"100%",fontFamily:"'Inter', sans-serif"}} placeholder="New PIN (4+ digits)" type="password" inputMode="numeric" maxLength={8} value={newPinVal} onChange={e=>setNewPinVal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doRename()} />
+              {renameError && <div style={{color:"#ff8080",fontSize:12,textAlign:"center"}}>{renameError}</div>}
+              <div style={{display:"flex",gap:8,marginTop:6}}>
+                <button onClick={()=>setRenamingUser(null)} style={{flex:1,padding:"11px",borderRadius:10,border:"1px solid rgba(255,255,255,0.12)",background:"transparent",color:"rgba(255,255,255,0.4)",cursor:"pointer",fontFamily:"'Inter', sans-serif",fontWeight:500,fontSize:14}}>Cancel</button>
+                <button onClick={doRename} disabled={renameLoading} style={{flex:1,padding:"11px",borderRadius:10,border:"none",background:`linear-gradient(135deg, ${GOLD}, #a07828)`,color:"#070710",cursor:"pointer",fontWeight:700,fontFamily:"'Cormorant Garamond', serif",letterSpacing:"0.05em",fontSize:15,opacity:renameLoading?0.7:1}}>
+                  {renameLoading?"…":"Save"}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
