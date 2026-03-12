@@ -282,6 +282,16 @@ function App() {
     }
   };
 
+  const deleteUser = async (nick) => {
+    const updatedUsers = users.filter(u => u.nickname !== nick);
+    await st.set("osc_users", updatedUsers);
+    await st.del(`preds_${YEAR}_${nick}`);
+    setUsers(updatedUsers);
+    const newAllPreds = { ...allPreds };
+    delete newAllPreds[nick];
+    setAllPreds(newAllPreds);
+  };
+
   const calcScore = (nick) =>
     Object.entries(winners).filter(([c,w]) => (allPreds[nick] || {})[c] === w).length;
 
@@ -379,7 +389,7 @@ function App() {
         {view==="ballot"      && <BallotView categories={CATEGORIES} predictions={predictions} onPick={pick} winners={winners} isLocked={isLocked} />}
         {view==="leaderboard" && <LeaderboardView users={users} allPreds={allPreds} winners={winners} calcScore={calcScore} myNick={user?.nickname} totalCats={CATEGORIES.length} />}
         {view==="stats"       && <StatsView winners={winners} allPreds={allPreds} categories={CATEGORIES} users={users} />}
-        {view==="admin"       && user?.isAdmin && <AdminView categories={CATEGORIES} winners={winners} onMark={markWinner} onRenameUser={renameUser} users={users} allPreds={allPreds} historyData={historyData} year={YEAR} />}
+        {view==="admin"       && user?.isAdmin && <AdminView categories={CATEGORIES} winners={winners} onMark={markWinner} onRenameUser={renameUser} onDeleteUser={deleteUser} myNick={user?.nickname} users={users} allPreds={allPreds} historyData={historyData} year={YEAR} />}
         {view==="history"     && <HistoryView historyData={historyData} />}
       </div>
 
@@ -605,7 +615,7 @@ function StatsView({ winners, allPreds, categories, users }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // ADMIN VIEW
 // ═══════════════════════════════════════════════════════════════════════════════
-function AdminView({ categories, winners, onMark, onRenameUser, users, allPreds, historyData, year }) {
+function AdminView({ categories, winners, onMark, onRenameUser, onDeleteUser, myNick, users, allPreds, historyData, year }) {
   const [tab, setTab] = useState("winners");
   const [saved, setSaved] = useState(false);
   const [renamingUser, setRenamingUser] = useState(null);
@@ -613,6 +623,15 @@ function AdminView({ categories, winners, onMark, onRenameUser, users, allPreds,
   const [newPinVal, setNewPinVal] = useState("");
   const [renameError, setRenameError] = useState("");
   const [renameLoading, setRenameLoading] = useState(false);
+  const [deletingUser, setDeletingUser] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const doDelete = async () => {
+    setDeleteLoading(true);
+    await onDeleteUser(deletingUser.nickname);
+    setDeletingUser(null);
+    setDeleteLoading(false);
+  };
 
   const doRename = async () => {
     if (!newNick.trim()) { setRenameError("Enter a new nickname"); return; }
@@ -690,11 +709,17 @@ function AdminView({ categories, winners, onMark, onRenameUser, users, allPreds,
                   <div style={{fontWeight:600,fontSize:14}}>{u.nickname} {u.isAdmin?"👑":""}</div>
                   <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:3}}>{predCount}/{CATEGORIES.length} predictions</div>
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <button onClick={()=>{ setRenamingUser(u); setNewNick(u.nickname); setNewPinVal(""); setRenameError(""); }}
                     style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"6px 10px",color:"rgba(255,255,255,0.45)",cursor:"pointer",fontSize:13,lineHeight:1}}>
                     ✏️
                   </button>
+                  {u.nickname !== myNick && (
+                    <button onClick={()=>setDeletingUser(u)}
+                      style={{background:"rgba(220,50,50,0.08)",border:"1px solid rgba(220,50,50,0.2)",borderRadius:8,padding:"6px 10px",color:"rgba(255,100,100,0.55)",cursor:"pointer",fontSize:13,lineHeight:1}}>
+                      🗑️
+                    </button>
+                  )}
                   <div style={{textAlign:"right"}}>
                     <div style={{fontSize:18,fontWeight:700,color:GOLD,fontFamily:"'Cormorant Garamond', serif"}}>{score}</div>
                     <div style={{fontSize:10,color:"rgba(255,255,255,0.25)"}}>correct</div>
@@ -703,6 +728,21 @@ function AdminView({ categories, winners, onMark, onRenameUser, users, allPreds,
               </div>
             );
           })}
+        </div>
+      )}
+
+      {deletingUser && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}} onClick={()=>setDeletingUser(null)}>
+          <div style={{background:"#161628",borderRadius:16,padding:"24px",width:"100%",maxWidth:340,border:"1px solid rgba(220,50,50,0.3)"}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:18,fontWeight:700,color:"#ff7070",fontFamily:"'Cormorant Garamond', serif",marginBottom:8}}>Delete Player?</div>
+            <div style={{fontSize:13,color:"rgba(255,255,255,0.5)",lineHeight:1.6,marginBottom:20}}>This will permanently remove <span style={{color:"#fff",fontWeight:600}}>{deletingUser.nickname}</span> and all their predictions. This cannot be undone.</div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setDeletingUser(null)} style={{flex:1,padding:"11px",borderRadius:10,border:"1px solid rgba(255,255,255,0.12)",background:"transparent",color:"rgba(255,255,255,0.4)",cursor:"pointer",fontFamily:"'Inter', sans-serif",fontWeight:500,fontSize:14}}>Cancel</button>
+              <button onClick={doDelete} disabled={deleteLoading} style={{flex:1,padding:"11px",borderRadius:10,border:"none",background:"linear-gradient(135deg, #c0392b, #8b1a1a)",color:"#fff",cursor:"pointer",fontWeight:700,fontFamily:"'Inter', sans-serif",fontSize:14,opacity:deleteLoading?0.7:1}}>
+                {deleteLoading?"…":"Delete"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
