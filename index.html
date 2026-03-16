@@ -412,7 +412,7 @@ function App() {
         {view==="stats"       && <StatsView winners={winners} allPreds={allPreds} categories={CATEGORIES} users={users} />}
         {view==="awards"      && <AwardsView myNick={user?.nickname} users={users} allPreds={allPreds} winners={winners} categories={CATEGORIES} />}
         {view==="admin"       && user?.isAdmin && <AdminView categories={CATEGORIES} winners={winners} onMark={markWinner} onRenameUser={renameUser} onDeleteUser={deleteUser} myNick={user?.nickname} users={users} allPreds={allPreds} historyData={historyData} year={YEAR} />}
-        {view==="history"     && <HistoryView historyData={historyData} onDeleteYear={user?.isAdmin?deleteHistoryYear:null} />}
+        {view==="history"     && <HistoryView historyData={historyData} myNick={user?.nickname} onDeleteYear={user?.isAdmin?deleteHistoryYear:null} />}
       </div>
 
       <nav style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:"rgba(12,12,24,0.97)",borderTop:`1px solid ${BORDER}`,display:"flex",zIndex:100,backdropFilter:"blur(16px)"}}>
@@ -712,9 +712,14 @@ function AdminView({ categories, winners, onMark, onRenameUser, onDeleteUser, my
   };
 
   const saveToHistory = async () => {
-    // FIX 3 — score uses toArr
     const scores=users.map(u=>({nickname:u.nickname,score:Object.entries(winners).filter(([c,w])=>toArr((allPreds[u.nickname]||{})[c]).some(p=>toArr(w).includes(p))).length}));
-    const entry={year,winners,scores,savedAt:new Date().toISOString()};
+    // Snapshot all predictions and category list so History can show full detail
+    const entry={
+      year, winners, scores,
+      predictions: allPreds,                                          // full per-user prediction map
+      categories: categories.map(c=>({id:c.id,name:c.name,emoji:c.emoji,multiSelect:c.multiSelect||false})),
+      savedAt: new Date().toISOString()
+    };
     const existing=(historyData||[]).filter(h=>h.year!==year);
     await st.set("osc_history",[...existing,entry]);
     setSaved(true); setTimeout(()=>setSaved(false),3000);
@@ -1020,72 +1025,216 @@ function AwardsView({ myNick, users, allPreds, winners, categories }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// HISTORY VIEW  — FIX 6: export button for all users
+// HISTORY VIEW — year-by-year explorer with full prediction breakdown
 // ═══════════════════════════════════════════════════════════════════════════════
-function HistoryView({ historyData, onDeleteYear }) {
-  const MEDALS=["🥇","🥈","🥉"];
-  const [confirmYear, setConfirmYear] = React.useState(null);
+function HistoryView({ historyData, myNick, onDeleteYear }) {
+  const years = [...(historyData||[])].sort((a,b)=>b.year-a.year);
+  const [selectedYear, setSelectedYear] = useState(years[0]?.year||null);
+  const [innerTab, setInnerTab]         = useState("scores"); // scores | categories
+  const [filterUser, setFilterUser]     = useState("__all__");
+  const [expandedCat, setExpandedCat]   = useState(null);
+  const [confirmYear, setConfirmYear]   = useState(null);
 
-  // FIX 6 — export available to all users
+  // Keep selectedYear in sync if historyData changes
+  useEffect(()=>{
+    if(years.length && !years.find(e=>e.year===selectedYear)) setSelectedYear(years[0].year);
+  },[historyData]);
+
+  const entry = years.find(e=>e.year===selectedYear);
+
+  // Export full history as JSON
   const exportHistory = () => {
-    if(!historyData?.length) return;
-    const blob=new Blob([JSON.stringify(historyData,null,2)],{type:"application/json"});
-    const a=document.createElement("a");
-    a.href=URL.createObjectURL(blob); a.download="oscars_history.json"; a.click();
+    if(!years.length) return;
+    const blob=new Blob([JSON.stringify(years,null,2)],{type:"application/json"});
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+    a.download="oscars_history.json"; a.click();
   };
 
   const doDelete = async (yr) => { await onDeleteYear(yr); setConfirmYear(null); };
 
-  if(!historyData?.length) return (
+  if(!years.length) return (
     <div style={{textAlign:"center",padding:"70px 24px",color:"rgba(255,255,255,0.25)"}}>
       <div style={{fontSize:52}}>📅</div>
       <div style={{marginTop:18,fontSize:15,fontFamily:"'Cormorant Garamond', serif",color:"rgba(255,255,255,0.35)"}}>No history yet</div>
-      <div style={{marginTop:8,fontSize:12,lineHeight:1.7}}>After each ceremony, the admin saves results.<br/>They'll appear here every year.</div>
+      <div style={{marginTop:8,fontSize:12,lineHeight:1.7}}>After each ceremony, the admin saves the year.<br/>It will appear here.</div>
     </div>
   );
 
-  return (
-    <div style={{padding:"10px 14px"}}>
-      {/* FIX 6 — export button */}
-      <button onClick={exportHistory}
-        style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",marginBottom:14,padding:"11px",background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`,borderRadius:12,color:GOLD,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Inter', sans-serif"}}>
-        ⬇️ Export history as JSON
-      </button>
+  const ts=t=>({padding:"8px 14px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,fontFamily:"'Inter', sans-serif",letterSpacing:"0.04em",background:innerTab===t?`linear-gradient(135deg, ${GOLD}, #a07828)`:"rgba(255,255,255,0.07)",color:innerTab===t?"#07070f":"rgba(255,255,255,0.45)",transition:"all 0.2s"});
 
-      {[...historyData].reverse().map(entry=>{
-        const sorted=[...entry.scores].sort((a,b)=>b.score-a.score);
-        const total=Object.keys(entry.winners||{}).length;
-        return (
-          <div key={entry.year} style={{background:CARD2,borderRadius:16,padding:"18px",marginBottom:14,border:`1px solid ${BORDER}`}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-              <div style={{fontSize:22,fontWeight:700,color:GOLD,fontFamily:"'Cormorant Garamond', serif"}}>🏆 Oscars {entry.year}</div>
+  return (
+    <div>
+      {/* ── Year selector pills ── */}
+      <div style={{padding:"12px 14px 0",display:"flex",gap:6,overflowX:"auto",paddingBottom:2}}>
+        {years.map(e=>(
+          <button key={e.year} onClick={()=>{setSelectedYear(e.year);setInnerTab("scores");setFilterUser("__all__");setExpandedCat(null);}}
+            style={{flexShrink:0,padding:"7px 16px",borderRadius:20,border:`1px solid ${selectedYear===e.year?"rgba(201,168,76,0.5)":"rgba(255,255,255,0.1)"}`,background:selectedYear===e.year?`linear-gradient(135deg,${GOLD},#a07828)`:"rgba(255,255,255,0.04)",color:selectedYear===e.year?"#07070f":"rgba(255,255,255,0.5)",fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:"'Cormorant Garamond', serif",letterSpacing:"0.05em",transition:"all 0.2s"}}>
+            {e.year}
+          </button>
+        ))}
+
+        {/* Export + delete in the pill row */}
+        <button onClick={exportHistory}
+          style={{flexShrink:0,marginLeft:"auto",padding:"7px 14px",borderRadius:20,border:`1px solid ${BORDER}`,background:"rgba(255,255,255,0.04)",color:GOLD,fontWeight:600,fontSize:12,cursor:"pointer",fontFamily:"'Inter', sans-serif"}}>
+          ⬇️ Export
+        </button>
+      </div>
+
+      {entry && (
+        <div style={{animation:"fadeIn 0.25s ease"}}>
+          {/* ── Year summary card ── */}
+          <div style={{margin:"12px 14px 8px",background:`linear-gradient(135deg,#1a1330,#0e1628)`,borderRadius:16,padding:"18px 20px",border:`1px solid ${BORDER}`}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div>
+                <div style={{fontSize:24,fontWeight:700,color:GOLD,fontFamily:"'Cormorant Garamond', serif",lineHeight:1}}>
+                  🏆 Oscars {entry.year}
+                </div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:5}}>
+                  {new Date(entry.savedAt).toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"})}
+                  {" · "}{Object.keys(entry.winners||{}).length} categories
+                </div>
+              </div>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <div style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>{new Date(entry.savedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>
-                {onDeleteYear&&(
+                {/* winner of that year */}
+                {(()=>{ const top=[...(entry.scores||[])].sort((a,b)=>b.score-a.score)[0]; return top?<div style={{textAlign:"right"}}><div style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>🥇 Winner</div><div style={{fontSize:13,fontWeight:700,color:GOLD}}>{top.nickname}</div></div>:null; })()}
+                {onDeleteYear && (
                   confirmYear===entry.year
-                    ?<div style={{display:"flex",gap:6,alignItems:"center"}}>
-                        <span style={{fontSize:11,color:"rgba(255,100,100,0.7)"}}>Remove?</span>
+                    ? <div style={{display:"flex",gap:6,alignItems:"center",marginLeft:8}}>
+                        <span style={{fontSize:11,color:"rgba(255,100,100,0.7)"}}>Delete?</span>
                         <button onClick={()=>doDelete(entry.year)} style={{background:"rgba(200,40,40,0.2)",border:"1px solid rgba(200,40,40,0.4)",borderRadius:6,padding:"3px 9px",color:"#ff8080",cursor:"pointer",fontSize:11,fontWeight:600}}>Yes</button>
                         <button onClick={()=>setConfirmYear(null)} style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:6,padding:"3px 9px",color:"rgba(255,255,255,0.35)",cursor:"pointer",fontSize:11}}>No</button>
                       </div>
-                    :<button onClick={()=>setConfirmYear(entry.year)} style={{background:"rgba(200,40,40,0.07)",border:"1px solid rgba(200,40,40,0.15)",borderRadius:6,padding:"4px 8px",color:"rgba(255,100,100,0.4)",cursor:"pointer",fontSize:12,lineHeight:1}}>🗑️</button>
+                    : <button onClick={()=>setConfirmYear(entry.year)} style={{background:"rgba(200,40,40,0.07)",border:"1px solid rgba(200,40,40,0.15)",borderRadius:6,padding:"5px 9px",color:"rgba(255,100,100,0.4)",cursor:"pointer",fontSize:13,lineHeight:1,marginLeft:8}}>🗑️</button>
                 )}
               </div>
             </div>
-            {sorted.map((s,i)=>(
-              <div key={s.nickname} style={{display:"flex",alignItems:"center",padding:"8px 0",borderBottom:i<sorted.length-1?"1px solid rgba(255,255,255,0.05)":"none",gap:12}}>
-                <span style={{width:28,fontSize:i<3?20:13,textAlign:"center",color:i>=3?"rgba(255,255,255,0.3)":undefined,fontWeight:700}}>{i<3?MEDALS[i]:`${i+1}.`}</span>
-                <span style={{flex:1,fontWeight:i===0?700:400,color:i===0?GOLD:"rgba(255,255,255,0.7)",fontSize:14}}>{s.nickname}</span>
-                {/* FIX 2 — "out of" in history */}
-                <span style={{color:GOLD,fontWeight:700,fontFamily:"'Cormorant Garamond', serif",fontSize:17}}>
-                  {s.score}<span style={{color:"rgba(255,255,255,0.3)",fontFamily:"'Inter'",fontWeight:400,fontSize:11}}> out of {total}</span>
-                </span>
-                <span style={{fontSize:11,color:"rgba(255,255,255,0.3)",width:35,textAlign:"right"}}>{total>0?Math.round((s.score/total)*100):0}%</span>
-              </div>
-            ))}
           </div>
-        );
-      })}
+
+          {/* ── Inner tabs ── */}
+          <div style={{padding:"0 14px 8px",display:"flex",gap:6}}>
+            <button style={ts("scores")} onClick={()=>setInnerTab("scores")}>🏅 Scores</button>
+            <button style={ts("categories")} onClick={()=>setInnerTab("categories")}>🎬 Categories</button>
+          </div>
+
+          {/* ── SCORES tab ── */}
+          {innerTab==="scores" && (()=>{
+            const sorted=[...(entry.scores||[])].sort((a,b)=>b.score-a.score);
+            const total=Object.keys(entry.winners||{}).length;
+            const MEDALS=["🥇","🥈","🥉"];
+            return (
+              <div style={{padding:"0 14px"}}>
+                {sorted.map((s,i)=>{
+                  const isMe=s.nickname===myNick;
+                  const pct=total>0?Math.round((s.score/total)*100):0;
+                  return (
+                    <div key={s.nickname} style={{background:isMe?`linear-gradient(135deg,rgba(201,168,76,0.08),rgba(201,168,76,0.03))`:CARD2,borderRadius:12,padding:"13px 16px",marginBottom:6,border:`1px solid ${isMe?"rgba(201,168,76,0.3)":"rgba(255,255,255,0.05)"}`}}>
+                      <div style={{display:"flex",alignItems:"center",gap:12}}>
+                        <div style={{fontSize:i<3?24:13,width:30,textAlign:"center",color:i>=3?"rgba(255,255,255,0.25)":undefined,fontWeight:700,flexShrink:0}}>{i<3?MEDALS[i]:`${i+1}.`}</div>
+                        <div style={{flex:1}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                            <span style={{fontWeight:600,fontSize:14,color:isMe?GOLD:"#e8e8e8"}}>{s.nickname}{isMe?" (you)":""}</span>
+                            <span style={{fontSize:18,fontWeight:700,color:GOLD,fontFamily:"'Cormorant Garamond', serif"}}>
+                              {s.score}<span style={{fontSize:11,color:"rgba(255,255,255,0.3)",fontFamily:"'Inter'",fontWeight:400}}> out of {total}</span>
+                            </span>
+                          </div>
+                          <div style={{height:3,background:"rgba(255,255,255,0.06)",borderRadius:4,overflow:"hidden"}}>
+                            <div style={{width:`${pct}%`,height:"100%",background:isMe?`linear-gradient(90deg,${GOLD},#6be89a)`:"linear-gradient(90deg,#555,#777)",borderRadius:4,transition:"width 0.5s ease"}} />
+                          </div>
+                          <div style={{fontSize:10,color:"rgba(255,255,255,0.2)",marginTop:4}}>{pct}% accuracy</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
+          {/* ── CATEGORIES tab ── */}
+          {innerTab==="categories" && (()=>{
+            const cats = entry.categories || CATEGORIES.map(c=>({id:c.id,name:c.name,emoji:c.emoji,multiSelect:c.multiSelect||false}));
+            const preds = entry.predictions || {};
+            const wins  = entry.winners || {};
+            const players = (entry.scores||[]).map(s=>s.nickname);
+
+            // user filter pills
+            const allUsers = ["__all__",...players];
+
+            return (
+              <div>
+                {/* User filter strip */}
+                <div style={{padding:"0 14px 10px",display:"flex",gap:5,overflowX:"auto"}}>
+                  {allUsers.map(u=>(
+                    <button key={u} onClick={()=>setFilterUser(u)}
+                      style={{flexShrink:0,padding:"5px 12px",borderRadius:14,border:`1px solid ${filterUser===u?"rgba(201,168,76,0.5)":"rgba(255,255,255,0.1)"}`,background:filterUser===u?`rgba(201,168,76,0.15)`:"rgba(255,255,255,0.03)",color:filterUser===u?GOLD:"rgba(255,255,255,0.45)",fontSize:11,fontWeight:filterUser===u?600:400,cursor:"pointer",fontFamily:"'Inter', sans-serif",transition:"all 0.15s",whiteSpace:"nowrap"}}>
+                      {u==="__all__"?"All players":(u===myNick?`${u} (you)`:u)}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Category cards */}
+                {cats.map(cat=>{
+                  const winArr = toArr(wins[cat.id]);
+                  const isExpanded = expandedCat===cat.id;
+                  const displayedPlayers = filterUser==="__all__" ? players : players.filter(p=>p===filterUser);
+
+                  // How many players got this right (for summary line)
+                  const correctCount = displayedPlayers.filter(p=>toArr((preds[p]||{})[cat.id]).some(v=>winArr.includes(v))).length;
+
+                  return (
+                    <div key={cat.id} style={{margin:"4px 14px",background:CARD2,borderRadius:12,border:`1px solid ${winArr.length?"rgba(201,168,76,0.15)":"rgba(255,255,255,0.05)"}`,overflow:"hidden"}}>
+                      {/* Header row — tappable to expand */}
+                      <button onClick={()=>setExpandedCat(isExpanded?null:cat.id)}
+                        style={{width:"100%",background:"none",border:"none",padding:"11px 14px",display:"flex",alignItems:"center",gap:8,cursor:"pointer",textAlign:"left"}}>
+                        <span style={{fontSize:14,flexShrink:0}}>{cat.emoji}</span>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:13,fontWeight:600,color:winArr.length?"#fff":"rgba(255,255,255,0.4)",fontFamily:"'Cormorant Garamond', serif",letterSpacing:"0.02em"}}>{cat.name}</div>
+                          {winArr.length>0 && <div style={{fontSize:11,color:GOLD,marginTop:2}}>🏆 {winArr.join(" & ")}</div>}
+                          {winArr.length===0 && <div style={{fontSize:11,color:"rgba(255,255,255,0.25)",marginTop:2,fontStyle:"italic"}}>No winner recorded</div>}
+                        </div>
+                        {winArr.length>0 && (
+                          <div style={{textAlign:"right",flexShrink:0}}>
+                            <div style={{fontSize:12,fontWeight:600,color:correctCount>0?"#6be89a":"rgba(255,255,255,0.25)"}}>{correctCount}/{displayedPlayers.length}</div>
+                            <div style={{fontSize:9,color:"rgba(255,255,255,0.2)"}}>correct</div>
+                          </div>
+                        )}
+                        <span style={{fontSize:12,color:"rgba(255,255,255,0.2)",marginLeft:4,flexShrink:0}}>{isExpanded?"▲":"▼"}</span>
+                      </button>
+
+                      {/* Expanded: per-user picks */}
+                      {isExpanded && (
+                        <div style={{borderTop:"1px solid rgba(255,255,255,0.06)",padding:"8px 12px 10px",display:"flex",flexDirection:"column",gap:5}}>
+                          {displayedPlayers.length===0 && <div style={{fontSize:12,color:"rgba(255,255,255,0.25)",fontStyle:"italic",padding:"4px 2px"}}>No players found</div>}
+                          {displayedPlayers.map(player=>{
+                            const pickArr = toArr((preds[player]||{})[cat.id]);
+                            const isMe    = player===myNick;
+                            const correct = pickArr.length>0&&winArr.length>0&&pickArr.some(p=>winArr.includes(p));
+                            const wrong   = pickArr.length>0&&winArr.length>0&&!pickArr.some(p=>winArr.includes(p));
+                            const nodata  = pickArr.length===0;
+                            return (
+                              <div key={player} style={{display:"flex",alignItems:"center",gap:10,background:correct?"rgba(107,232,154,0.06)":wrong?"rgba(255,100,100,0.05)":"rgba(255,255,255,0.02)",borderRadius:8,padding:"7px 10px",border:`1px solid ${correct?"rgba(107,232,154,0.15)":wrong?"rgba(255,100,100,0.1)":"rgba(255,255,255,0.05)"}`}}>
+                                <span style={{fontSize:15,flexShrink:0,lineHeight:1}}>{correct?"✅":wrong?"❌":"⬜"}</span>
+                                <div style={{flex:1,minWidth:0}}>
+                                  <div style={{fontSize:11,color:isMe?GOLD:"rgba(255,255,255,0.35)",fontWeight:isMe?600:400,marginBottom:2}}>{player}{isMe?" (you)":""}</div>
+                                  {nodata
+                                    ? <div style={{fontSize:12,color:"rgba(255,255,255,0.2)",fontStyle:"italic"}}>No prediction</div>
+                                    : <div style={{fontSize:12,color:correct?"#6be89a":wrong?"#ff8080":"rgba(255,255,255,0.5)",fontWeight:correct||wrong?500:400,lineHeight:1.3}}>{pickArr.join(" & ")}</div>
+                                  }
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                <div style={{height:16}} />
+              </div>
+            );
+          })()}
+        </div>
+      )}
     </div>
   );
 }
