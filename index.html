@@ -43,7 +43,6 @@
 
 <script>
 // ─── PASTE YOUR FIREBASE CONFIG HERE ──────────────────────────────────────────
-// Get this from: Firebase Console → Project Settings → Your apps → SDK setup
 const firebaseConfig = {
   apiKey: "AIzaSyCdmc7skbljrY5FaTRm2ANTMX4YCoiZyOw",
   authDomain: "oscars-predictions-27383.firebaseapp.com",
@@ -52,8 +51,6 @@ const firebaseConfig = {
   messagingSenderId: "453525835601",
   appId: "1:453525835601:web:7c2dea14313d2dcc63cd70"
 };
-// ──────────────────────────────────────────────────────────────────────────────
-
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 </script>
@@ -61,38 +58,45 @@ const db = firebase.firestore();
 <script type="text/babel">
 const { useState, useEffect, useCallback, useRef } = React;
 
-// ─── Colors ──────────────────────────────────────────────────────────────────
+// ─── Colors ───────────────────────────────────────────────────────────────────
 const GOLD = "#C9A84C", GOLD2 = "#F5D78E", DARK = "#07070f";
 const CARD = "#0f0f1e", CARD2 = "#161628", BORDER = "rgba(201,168,76,0.2)";
 const YEAR = "2026";
-const LOCK_TIME = new Date("2026-03-15T21:55:00Z");
+const LOCK_TIME = new Date("2026-03-15T21:55:00Z"); // your custom lock time
+// FIX 1 — 6 hours after ceremony start = 06:00 EET
+const END_TIME  = new Date("2026-03-16T04:00:00Z");
 
-// ─── Nominees Data ───────────────────────────────────────────────────────────
+// ─── FIX 3 helper — normalise winner/pick to array ────────────────────────────
+const toArr = v => Array.isArray(v) ? v : (v ? [v] : []);
+
+// ─── Nominees Data ────────────────────────────────────────────────────────────
+// multiSelect:true → admin can mark multiple winners, users can pick multiple
 const CATEGORIES = [
-  { id:"picture", name:"Best Picture", emoji:"🏆", nominees:["Bugonia","F1","Frankenstein","Hamnet","Marty Supreme","One Battle After Another","The Secret Agent","Sentimental Value","Sinners","Train Dreams"] },
-  { id:"director", name:"Best Director", emoji:"🎬", nominees:["Paul Thomas Anderson — One Battle After Another","Ryan Coogler — Sinners","Chloé Zhao — Hamnet","Josh Safdie — Marty Supreme","Joachim Trier — Sentimental Value"] },
-  { id:"actor", name:"Best Actor", emoji:"🎭", nominees:["Timothée Chalamet — Marty Supreme","Leonardo DiCaprio — One Battle After Another","Ethan Hawke — Blue Moon","Michael B. Jordan — Sinners","Wagner Moura — The Secret Agent"] },
-  { id:"actress", name:"Best Actress", emoji:"🎭", nominees:["Jessie Buckley — Hamnet","Rose Byrne — If I Had Legs I'd Kick You","Renate Reinsve — Sentimental Value","Emma Stone — Bugonia","Kate Hudson — Song Sung Blue"] },
-  { id:"supp_actor", name:"Best Supporting Actor", emoji:"🎭", nominees:["Jacob Elordi — Frankenstein","Sean Penn — One Battle After Another","Stellan Skarsgård — Sentimental Value","Benicio del Toro — One Battle After Another","Delroy Lindo — Sinners"] },
-  { id:"supp_actress", name:"Best Supporting Actress", emoji:"🎭", nominees:["Elle Fanning — Sentimental Value","Inga Ibsdotter Lilleaas — Sentimental Value","Amy Madigan — Weapons","Wunmi Mosaku — Sinners","Teyana Taylor — One Battle After Another"] },
-  { id:"animated", name:"Best Animated Feature", emoji:"🎨", nominees:["Arco","Elio","KPop Demon Hunters","Little Amélie or the Character of Rain","Zootopia 2"] },
-  { id:"intl", name:"Best International Feature", emoji:"🌍", nominees:["The Secret Agent (Brazil)","It Was Just an Accident (France)","Sentimental Value (Norway)","Sirât (Spain)","The Voice of Hind Rajab (Tunisia)"] },
-  { id:"documentary", name:"Best Documentary Feature", emoji:"📽️", nominees:["The Perfect Neighbor","The Alabama Solution","Come See Me in the Good Light","Cutting Through Rocks","Mr. Nobody Against Putin"] },
-  { id:"casting", name:"Best Casting ✦ NEW", emoji:"🎯", nominees:["Hamnet","Marty Supreme","One Battle After Another","The Secret Agent","Sinners"] },
-  { id:"score", name:"Best Original Score", emoji:"🎵", nominees:["Bugonia — Jerskin Fendrix","Frankenstein — Alexandre Desplat","Hamnet — Max Richter","One Battle After Another — Jonny Greenwood","Sinners — Ludwig Göransson"] },
-  { id:"song", name:"Best Original Song", emoji:"🎶", nominees:['"Golden" — KPop Demon Hunters','"Train Dreams" — Train Dreams','"Dear Me" — Diane Warren: Relentless','"I Lied To You" — Sinners','"Sweet Dreams Of Joy" — Viva Verdi!'] },
-  { id:"orig_screenplay", name:"Best Original Screenplay", emoji:"✍️", nominees:["Blue Moon — Robert Kaplow","It Was Just an Accident — Jafar Panahi et al.","Marty Supreme — Bronstein & Safdie","Sentimental Value — Vogt & Trier","Sinners — Ryan Coogler"] },
-  { id:"adapt_screenplay", name:"Best Adapted Screenplay", emoji:"✍️", nominees:["Bugonia — Will Tracy","Frankenstein — Guillermo del Toro","Hamnet — Zhao & O'Farrell","One Battle After Another — Paul Thomas Anderson","Train Dreams — Bailey & Kwedar"] },
-  { id:"cinematography", name:"Best Cinematography", emoji:"📸", nominees:["Frankenstein","Marty Supreme","One Battle After Another","Sinners","Train Dreams"] },
-  { id:"editing", name:"Best Film Editing", emoji:"✂️", nominees:["F1","Marty Supreme","One Battle After Another","Sentimental Value","Sinners"] },
-  { id:"production", name:"Best Production Design", emoji:"🏛️", nominees:["Frankenstein","Hamnet","Marty Supreme","One Battle After Another","Sinners"] },
-  { id:"costume", name:"Best Costume Design", emoji:"👗", nominees:["Avatar: Fire and Ash","Frankenstein","Hamnet","Marty Supreme","Sinners"] },
-  { id:"makeup", name:"Best Makeup & Hairstyling", emoji:"💄", nominees:["Frankenstein","Kokuho","Sinners","The Smashing Machine","The Ugly Stepsister"] },
-  { id:"sound", name:"Best Sound", emoji:"🔊", nominees:["F1","Frankenstein","One Battle After Another","Sinners","Sirât"] },
-  { id:"vfx", name:"Best Visual Effects", emoji:"✨", nominees:["Avatar: Fire and Ash","F1","Jurassic World Rebirth","The Lost Bus","Sinners"] },
-  { id:"short_live", name:"Best Live Action Short", emoji:"🎞️", nominees:["Butcher's Stain","A Friend of Dorothy","Jane Austen's Period Drama","The Singers","Two People Exchanging Saliva"] },
-  { id:"short_animated", name:"Best Animated Short", emoji:"🖼️", nominees:["Butterfly","Forevergreen","The Girl Who Cried Pearls","Retirement Plan","The Three Sisters"] },
-  { id:"short_doc", name:"Best Documentary Short", emoji:"📹", nominees:["All the Empty Rooms","Armed Only with a Camera","Children No More","The Devil Is Busy","Perfectly a Strangeness"] },
+  { id:"picture",       name:"Best Picture",            emoji:"🏆", nominees:["Bugonia","F1","Frankenstein","Hamnet","Marty Supreme","One Battle After Another","The Secret Agent","Sentimental Value","Sinners","Train Dreams"] },
+  { id:"director",      name:"Best Director",           emoji:"🎬", nominees:["Paul Thomas Anderson — One Battle After Another","Ryan Coogler — Sinners","Chloé Zhao — Hamnet","Josh Safdie — Marty Supreme","Joachim Trier — Sentimental Value"] },
+  { id:"actor",         name:"Best Actor",              emoji:"🎭", nominees:["Timothée Chalamet — Marty Supreme","Leonardo DiCaprio — One Battle After Another","Ethan Hawke — Blue Moon","Michael B. Jordan — Sinners","Wagner Moura — The Secret Agent"] },
+  { id:"actress",       name:"Best Actress",            emoji:"🎭", nominees:["Jessie Buckley — Hamnet","Rose Byrne — If I Had Legs I'd Kick You","Renate Reinsve — Sentimental Value","Emma Stone — Bugonia","Kate Hudson — Song Sung Blue"] },
+  { id:"supp_actor",    name:"Best Supporting Actor",   emoji:"🎭", nominees:["Jacob Elordi — Frankenstein","Sean Penn — One Battle After Another","Stellan Skarsgård — Sentimental Value","Benicio del Toro — One Battle After Another","Delroy Lindo — Sinners"] },
+  { id:"supp_actress",  name:"Best Supporting Actress", emoji:"🎭", nominees:["Elle Fanning — Sentimental Value","Inga Ibsdotter Lilleaas — Sentimental Value","Amy Madigan — Weapons","Wunmi Mosaku — Sinners","Teyana Taylor — One Battle After Another"] },
+  { id:"animated",      name:"Best Animated Feature",   emoji:"🎨", nominees:["Arco","Elio","KPop Demon Hunters","Little Amélie or the Character of Rain","Zootopia 2"] },
+  { id:"intl",          name:"Best International Feature", emoji:"🌍", nominees:["The Secret Agent (Brazil)","It Was Just an Accident (France)","Sentimental Value (Norway)","Sirât (Spain)","The Voice of Hind Rajab (Tunisia)"] },
+  { id:"documentary",   name:"Best Documentary Feature",emoji:"📽️", nominees:["The Perfect Neighbor","The Alabama Solution","Come See Me in the Good Light","Cutting Through Rocks","Mr. Nobody Against Putin"] },
+  { id:"casting",       name:"Best Casting ✦ NEW",      emoji:"🎯", nominees:["Hamnet","Marty Supreme","One Battle After Another","The Secret Agent","Sinners"] },
+  { id:"score",         name:"Best Original Score",     emoji:"🎵", nominees:["Bugonia — Jerskin Fendrix","Frankenstein — Alexandre Desplat","Hamnet — Max Richter","One Battle After Another — Jonny Greenwood","Sinners — Ludwig Göransson"] },
+  { id:"song",          name:"Best Original Song",      emoji:"🎶", nominees:['"Golden" — KPop Demon Hunters','"Train Dreams" — Train Dreams','"Dear Me" — Diane Warren: Relentless','"I Lied To You" — Sinners','"Sweet Dreams Of Joy" — Viva Verdi!'] },
+  { id:"orig_screenplay",  name:"Best Original Screenplay",  emoji:"✍️", nominees:["Blue Moon — Robert Kaplow","It Was Just an Accident — Jafar Panahi et al.","Marty Supreme — Bronstein & Safdie","Sentimental Value — Vogt & Trier","Sinners — Ryan Coogler"] },
+  { id:"adapt_screenplay", name:"Best Adapted Screenplay",   emoji:"✍️", nominees:["Bugonia — Will Tracy","Frankenstein — Guillermo del Toro","Hamnet — Zhao & O'Farrell","One Battle After Another — Paul Thomas Anderson","Train Dreams — Bailey & Kwedar"] },
+  { id:"cinematography",name:"Best Cinematography",     emoji:"📸", nominees:["Frankenstein","Marty Supreme","One Battle After Another","Sinners","Train Dreams"] },
+  { id:"editing",       name:"Best Film Editing",       emoji:"✂️", nominees:["F1","Marty Supreme","One Battle After Another","Sentimental Value","Sinners"] },
+  { id:"production",    name:"Best Production Design",  emoji:"🏛️", nominees:["Frankenstein","Hamnet","Marty Supreme","One Battle After Another","Sinners"] },
+  { id:"costume",       name:"Best Costume Design",     emoji:"👗", nominees:["Avatar: Fire and Ash","Frankenstein","Hamnet","Marty Supreme","Sinners"] },
+  { id:"makeup",        name:"Best Makeup & Hairstyling",emoji:"💄", nominees:["Frankenstein","Kokuho","Sinners","The Smashing Machine","The Ugly Stepsister"] },
+  { id:"sound",         name:"Best Sound",              emoji:"🔊", nominees:["F1","Frankenstein","One Battle After Another","Sinners","Sirât"] },
+  { id:"vfx",           name:"Best Visual Effects",     emoji:"✨", nominees:["Avatar: Fire and Ash","F1","Jurassic World Rebirth","The Lost Bus","Sinners"] },
+  // FIX 3 — two winners this year, multiSelect enabled
+  { id:"short_live",    name:"Best Live Action Short",  emoji:"🎞️", multiSelect:true, nominees:["Butcher's Stain","A Friend of Dorothy","Jane Austen's Period Drama","The Singers","Two People Exchanging Saliva"] },
+  { id:"short_animated",name:"Best Animated Short",     emoji:"🖼️", nominees:["Butterfly","Forevergreen","The Girl Who Cried Pearls","Retirement Plan","The Three Sisters"] },
+  { id:"short_doc",     name:"Best Documentary Short",  emoji:"📹", nominees:["All the Empty Rooms","Armed Only with a Camera","Children No More","The Devil Is Busy","Perfectly a Strangeness"] },
 ];
 
 // ─── Achievements ─────────────────────────────────────────────────────────────
@@ -100,22 +104,22 @@ const ACHIEVEMENTS = [
   {
     id:"oracle", icon:"🔮", name:"Oracle of Hollywood",
     desc:"Got 18+ categories correct — you basically work for PricewaterhouseCoopers",
-    check:(nick,ap,w)=>Object.entries(w).filter(([c,v])=>(ap[nick]||{})[c]===v).length>=18
+    check:(nick,ap,w)=>Object.entries(w).filter(([c,v])=>toArr((ap[nick]||{})[c]).some(p=>toArr(v).includes(p))).length>=18
   },
   {
     id:"snubbed", icon:"😭", name:"Snubbed Again",
     desc:"Finished with 0 correct — the Academy has betrayed you personally",
-    check:(nick,ap,w)=>Object.keys(w).length>=10&&Object.entries(w).filter(([c,v])=>(ap[nick]||{})[c]===v).length===0
+    check:(nick,ap,w)=>Object.keys(w).length>=10&&Object.entries(w).filter(([c,v])=>toArr((ap[nick]||{})[c]).some(p=>toArr(v).includes(p))).length===0
   },
   {
     id:"nordic", icon:"🇳🇴", name:"Scandinavian Conspiracy",
     desc:"Picked Sentimental Value to win 3+ categories — Trier's biggest fan in the room",
-    check:(nick,ap)=>Object.values(ap[nick]||{}).filter(v=>v?.includes("Sentimental Value")).length>=3
+    check:(nick,ap)=>Object.values(ap[nick]||{}).flat().filter(v=>v?.includes("Sentimental Value")).length>=3
   },
   {
     id:"sinner", icon:"😈", name:"All Sinners, No Saints",
     desc:"Predicted Sinners in every single category it was nominated for — you went ALL in",
-    check:(nick,ap,w,us,cats)=>{ const cc=cats.filter(c=>c.nominees.some(n=>n.includes("Sinners"))); return cc.length>0&&cc.every(c=>(ap[nick]||{})[c.id]?.includes("Sinners")); }
+    check:(nick,ap,w,us,cats)=>{ const cc=cats.filter(c=>c.nominees.some(n=>n.includes("Sinners"))); return cc.length>0&&cc.every(c=>toArr((ap[nick]||{})[c.id]).some(v=>v.includes("Sinners"))); }
   },
   {
     id:"typeA", icon:"📋", name:"Type A Personality",
@@ -125,27 +129,30 @@ const ACHIEVEMENTS = [
   {
     id:"darkhorse", icon:"🐴", name:"Dark Horse Whisperer",
     desc:"Correctly called a winner that literally nobody else picked — psychic powers confirmed",
-    check:(nick,ap,w,users)=>Object.entries(w).some(([cat,win])=>(ap[nick]||{})[cat]===win&&users.filter(u=>u.nickname!==nick).every(u=>(ap[u.nickname]||{})[cat]!==win))
+    check:(nick,ap,w,users)=>Object.entries(w).some(([cat,win])=>
+      toArr((ap[nick]||{})[cat]).some(p=>toArr(win).includes(p)) &&
+      users.filter(u=>u.nickname!==nick).every(u=>!toArr((ap[u.nickname]||{})[cat]).some(p=>toArr(win).includes(p)))
+    )
   },
   {
     id:"champion", icon:"👑", name:"This Is My Oscar",
     desc:"Finished #1 on the leaderboard — collect your statue",
-    check:(nick,ap,w,users)=>{ if(Object.keys(w).length<5)return false; const my=Object.entries(w).filter(([c,v])=>(ap[nick]||{})[c]===v).length; return users.every(u=>Object.entries(w).filter(([c,v])=>(ap[u.nickname]||{})[c]===v).length<=my); }
+    check:(nick,ap,w,users)=>{ if(Object.keys(w).length<5)return false; const my=Object.entries(w).filter(([c,v])=>toArr((ap[nick]||{})[c]).some(p=>toArr(v).includes(p))).length; return users.every(u=>Object.entries(w).filter(([c,v])=>toArr((ap[u.nickname]||{})[c]).some(p=>toArr(v).includes(p))).length<=my); }
   },
   {
     id:"pta", icon:"🎬", name:"PTA Superfan",
     desc:"Bet on 'One Battle After Another' in 4+ categories — you've read all the IndieWire think-pieces",
-    check:(nick,ap)=>Object.values(ap[nick]||{}).filter(v=>v?.includes("One Battle After Another")).length>=4
+    check:(nick,ap)=>Object.values(ap[nick]||{}).flat().filter(v=>v?.includes("One Battle After Another")).length>=4
   },
   {
     id:"acting_coach", icon:"🎭", name:"The Acting Coach",
     desc:"Correctly predicted both Best Actor and Best Actress in the same year",
-    check:(nick,ap,w)=>!!(w.actor&&w.actress&&(ap[nick]||{}).actor===w.actor&&(ap[nick]||{}).actress===w.actress)
+    check:(nick,ap,w)=>!!(w.actor&&w.actress&&toArr((ap[nick]||{}).actor).some(p=>toArr(w.actor).includes(p))&&toArr((ap[nick]||{}).actress).some(p=>toArr(w.actress).includes(p)))
   },
   {
     id:"fashionista", icon:"👗", name:"On The Red Carpet",
     desc:"Nailed both Best Costume Design and Best Production Design — a true aesthete",
-    check:(nick,ap,w)=>!!(w.costume&&w.production&&(ap[nick]||{}).costume===w.costume&&(ap[nick]||{}).production===w.production)
+    check:(nick,ap,w)=>!!(w.costume&&w.production&&toArr((ap[nick]||{}).costume).some(p=>toArr(w.costume).includes(p))&&toArr((ap[nick]||{}).production).some(p=>toArr(w.production).includes(p)))
   },
 ];
 
@@ -163,212 +170,179 @@ const getFilm = (catId, nominee) => {
 // ─── PIN hash ─────────────────────────────────────────────────────────────────
 const hashPin = (nick, pin) => btoa(`${nick.toLowerCase().trim()}:${pin}:oscars2026`).replace(/=/g,"");
 
-// ─── Firebase storage helpers ─────────────────────────────────────────────────
+// ─── Firebase helpers ─────────────────────────────────────────────────────────
 const st = {
   async get(key) {
-    try {
-      const doc = await db.collection("oscars").doc(key).get();
-      if (!doc.exists) return null;
-      return JSON.parse(doc.data().value);
-    } catch(e) { console.warn("st.get error", key, e); return null; }
+    try { const doc=await db.collection("oscars").doc(key).get(); if(!doc.exists)return null; return JSON.parse(doc.data().value); }
+    catch(e) { console.warn("st.get error",key,e); return null; }
   },
-  async set(key, val) {
-    try {
-      await db.collection("oscars").doc(key).set({ value: JSON.stringify(val), updatedAt: new Date().toISOString() });
-    } catch(e) { console.warn("st.set error", key, e); }
+  async set(key,val) {
+    try { await db.collection("oscars").doc(key).set({value:JSON.stringify(val),updatedAt:new Date().toISOString()}); }
+    catch(e) { console.warn("st.set error",key,e); }
   },
   async del(key) {
-    try {
-      await db.collection("oscars").doc(key).delete();
-    } catch(e) { console.warn("st.del error", key, e); }
+    try { await db.collection("oscars").doc(key).delete(); }
+    catch(e) { console.warn("st.del error",key,e); }
   }
 };
 
-// ─── Input style ──────────────────────────────────────────────────────────────
-const inp = {
-  background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)",
-  borderRadius: 10, padding: "13px 16px", fontSize: 15, color: "#fff",
-  width: "100%", fontFamily: "'Inter', sans-serif",
-};
+const inp = { background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:10, padding:"13px 16px", fontSize:15, color:"#fff", width:"100%", fontFamily:"'Inter', sans-serif" };
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // APP ROOT
 // ═══════════════════════════════════════════════════════════════════════════════
 function App() {
-  const [view, setView] = useState("login");
-  const [user, setUser] = useState(null);
+  const [view, setView]           = useState("login");
+  const [user, setUser]           = useState(null);
   const [loginForm, setLoginForm] = useState({ nickname:"", pin:"" });
-  const [isReg, setIsReg] = useState(false);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
+  const [isReg, setIsReg]         = useState(false);
+  const [error, setError]         = useState("");
+  const [loading, setLoading]     = useState(false);
   const [predictions, setPredictions] = useState({});
-  const [allPreds, setAllPreds] = useState({});
-  const [winners, setWinners] = useState({});
-  const [users, setUsers] = useState([]);
+  const [allPreds, setAllPreds]   = useState({});
+  const [winners, setWinners]     = useState({});
+  const [users, setUsers]         = useState([]);
   const [historyData, setHistoryData] = useState([]);
-  const [now, setNow] = useState(new Date());
+  const [now, setNow]             = useState(new Date());
 
-  const isLocked = now >= LOCK_TIME;
+  const isLocked       = now >= LOCK_TIME;
+  const isCeremonyOver = now >= END_TIME; // FIX 1
 
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
+  useEffect(() => { const t=setInterval(()=>setNow(new Date()),1000); return ()=>clearInterval(t); }, []);
 
   const loadShared = async () => {
-    const [w, u, h] = await Promise.all([
-      st.get(`winners_${YEAR}`), st.get("osc_users"), st.get("osc_history")
-    ]);
-    const ul = u || [];
-    setWinners(w || {});
-    setUsers(ul);
-    setHistoryData(h || []);
-    return ul;
+    const [w,u,h] = await Promise.all([st.get(`winners_${YEAR}`),st.get("osc_users"),st.get("osc_history")]);
+    const ul=u||[]; setWinners(w||{}); setUsers(ul); setHistoryData(h||[]); return ul;
   };
 
   const loadPredictions = async (usersList, myNick) => {
-    const entries = await Promise.all(
-      (usersList || []).map(async u => [u.nickname, await st.get(`preds_${YEAR}_${u.nickname}`)])
-    );
-    const all = Object.fromEntries(entries.map(([n,p]) => [n, p || {}]));
-    setAllPreds(all);
-    if (myNick) setPredictions(all[myNick] || {});
-    return all;
+    const entries = await Promise.all((usersList||[]).map(async u=>[u.nickname,await st.get(`preds_${YEAR}_${u.nickname}`)]));
+    const all = Object.fromEntries(entries.map(([n,p])=>[n,p||{}]));
+    setAllPreds(all); if(myNick) setPredictions(all[myNick]||{}); return all;
   };
 
-  // Real-time listener for winners (live during ceremony!)
   useEffect(() => {
-    if (!user) return;
-    const unsub = db.collection("oscars").doc(`winners_${YEAR}`).onSnapshot(doc => {
-      if (doc.exists) {
-        try { setWinners(JSON.parse(doc.data().value)); } catch {}
-      }
+    if(!user) return;
+    const unsub=db.collection("oscars").doc(`winners_${YEAR}`).onSnapshot(doc=>{
+      if(doc.exists){ try{setWinners(JSON.parse(doc.data().value))}catch{} }
     });
-    return () => unsub();
+    return ()=>unsub();
   }, [user]);
 
-  // Poll predictions every 20s — stops after lock time (winners use realtime onSnapshot)
   useEffect(() => {
-    if (!user || isLocked) return;
-    const t = setInterval(async () => {
-      if (new Date() >= LOCK_TIME) { clearInterval(t); return; }
-      const ul = await st.get("osc_users") || [];
-      setUsers(ul);
-      await loadPredictions(ul, user.nickname);
-    }, 20000);
-    return () => clearInterval(t);
-  }, [user, isLocked]);
+    if(!user||isLocked) return;
+    const t=setInterval(async()=>{
+      if(new Date()>=LOCK_TIME){clearInterval(t);return;}
+      const ul=await st.get("osc_users")||[]; setUsers(ul);
+      await loadPredictions(ul,user.nickname);
+    },20000);
+    return ()=>clearInterval(t);
+  }, [user,isLocked]);
 
   const handleAuth = async () => {
     setError("");
-    const { nickname, pin } = loginForm;
-    if (!nickname.trim() || pin.length < 4) { setError("Need a nickname and 4-digit PIN"); return; }
+    const {nickname,pin}=loginForm;
+    if(!nickname.trim()||pin.length<4){setError("Need a nickname and 4-digit PIN");return;}
     setLoading(true);
-    const currentUsers = await st.get("osc_users") || [];
-    const nick = nickname.trim();
-    const existing = currentUsers.find(u => u.nickname.toLowerCase() === nick.toLowerCase());
-
-    if (isReg) {
-      if (existing) { setError("Nickname already taken"); setLoading(false); return; }
-      if (currentUsers.length >= 20) { setError("Group is full (max 20 players)"); setLoading(false); return; }
-      const newUser = { nickname: nick, pinHash: hashPin(nick, pin), isAdmin: currentUsers.length === 0, joinedAt: new Date().toISOString() };
-      const updated = [...currentUsers, newUser];
-      await st.set("osc_users", updated);
-      await st.set(`preds_${YEAR}_${nick}`, {});
-      setUsers(updated);
-      await loadPredictions(updated, nick);
-      await loadShared();
-      setUser({ nickname: nick, isAdmin: newUser.isAdmin });
-      setView("ballot");
+    const currentUsers=await st.get("osc_users")||[];
+    const nick=nickname.trim();
+    const existing=currentUsers.find(u=>u.nickname.toLowerCase()===nick.toLowerCase());
+    if(isReg){
+      if(existing){setError("Nickname already taken");setLoading(false);return;}
+      if(currentUsers.length>=20){setError("Group is full (max 20 players)");setLoading(false);return;}
+      const newUser={nickname:nick,pinHash:hashPin(nick,pin),isAdmin:currentUsers.length===0,joinedAt:new Date().toISOString()};
+      const updated=[...currentUsers,newUser];
+      await st.set("osc_users",updated); await st.set(`preds_${YEAR}_${nick}`,{});
+      setUsers(updated); await loadPredictions(updated,nick); await loadShared();
+      setUser({nickname:nick,isAdmin:newUser.isAdmin}); setView("ballot");
     } else {
-      if (!existing) { setError("User not found — register first"); setLoading(false); return; }
-      if (existing.pinHash !== hashPin(nick, pin)) { setError("Wrong PIN, try again"); setLoading(false); return; }
-      const ul = await loadShared();
-      await loadPredictions(ul, existing.nickname);
-      setUser({ nickname: existing.nickname, isAdmin: existing.isAdmin });
-      setView("ballot");
+      if(!existing){setError("User not found — register first");setLoading(false);return;}
+      if(existing.pinHash!==hashPin(nick,pin)){setError("Wrong PIN, try again");setLoading(false);return;}
+      const ul=await loadShared(); await loadPredictions(ul,existing.nickname);
+      setUser({nickname:existing.nickname,isAdmin:existing.isAdmin}); setView("ballot");
     }
     setLoading(false);
   };
 
+  // FIX 3 — pick() handles multiSelect (toggles array of picks)
   const pick = async (catId, nominee) => {
-    if (isLocked) return;
-    const updated = { ...predictions, [catId]: nominee };
+    if(isLocked) return;
+    const cat=CATEGORIES.find(c=>c.id===catId);
+    let updated;
+    if(cat?.multiSelect){
+      const cur=toArr(predictions[catId]);
+      const next=cur.includes(nominee)?cur.filter(n=>n!==nominee):[...cur,nominee];
+      updated={...predictions};
+      if(next.length===0) delete updated[catId]; else updated[catId]=next;
+    } else {
+      updated={...predictions,[catId]:nominee};
+    }
     setPredictions(updated);
-    setAllPreds(prev => ({ ...prev, [user.nickname]: updated }));
-    await st.set(`preds_${YEAR}_${user.nickname}`, updated);
+    setAllPreds(prev=>({...prev,[user.nickname]:updated}));
+    await st.set(`preds_${YEAR}_${user.nickname}`,updated);
   };
 
+  // FIX 3 — markWinner() handles multiSelect (admin toggles multiple winners)
   const markWinner = async (catId, nominee) => {
-    const updated = { ...winners };
-    if (nominee === null) delete updated[catId];
-    else updated[catId] = nominee;
-    setWinners(updated);
-    await st.set(`winners_${YEAR}`, updated);
+    const cat=CATEGORIES.find(c=>c.id===catId);
+    const updated={...winners};
+    if(cat?.multiSelect){
+      const cur=toArr(winners[catId]);
+      const next=cur.includes(nominee)?cur.filter(n=>n!==nominee):[...cur,nominee];
+      if(next.length===0) delete updated[catId]; else updated[catId]=next;
+    } else {
+      if(nominee===null) delete updated[catId]; else updated[catId]=nominee;
+    }
+    setWinners(updated); await st.set(`winners_${YEAR}`,updated);
   };
 
   const renameUser = async (oldNick, newNick, newPin) => {
-    if (users.some(u => u.nickname.toLowerCase() === newNick.toLowerCase() && u.nickname !== oldNick)) {
+    if(users.some(u=>u.nickname.toLowerCase()===newNick.toLowerCase()&&u.nickname!==oldNick)){
       throw new Error("Nickname already taken");
     }
-    const preds = await st.get(`preds_${YEAR}_${oldNick}`) || {};
-    const updatedUsers = users.map(u =>
-      u.nickname === oldNick ? { ...u, nickname: newNick, pinHash: hashPin(newNick, newPin) } : u
-    );
-    await st.set("osc_users", updatedUsers);
-    await st.set(`preds_${YEAR}_${newNick}`, preds);
+    const preds=await st.get(`preds_${YEAR}_${oldNick}`)||{};
+    const updatedUsers=users.map(u=>u.nickname===oldNick?{...u,nickname:newNick,pinHash:hashPin(newNick,newPin)}:u);
+    await st.set("osc_users",updatedUsers);
+    await st.set(`preds_${YEAR}_${newNick}`,preds);
     await st.del(`preds_${YEAR}_${oldNick}`);
-    if (historyData && historyData.length > 0) {
-      const updatedHistory = historyData.map(entry => ({
-        ...entry,
-        scores: entry.scores.map(s => s.nickname === oldNick ? { ...s, nickname: newNick } : s)
-      }));
-      await st.set("osc_history", updatedHistory);
-      setHistoryData(updatedHistory);
+    if(historyData&&historyData.length>0){
+      const updatedHistory=historyData.map(entry=>({...entry,scores:entry.scores.map(s=>s.nickname===oldNick?{...s,nickname:newNick}:s)}));
+      await st.set("osc_history",updatedHistory); setHistoryData(updatedHistory);
     }
     setUsers(updatedUsers);
-    const newAllPreds = { ...allPreds, [newNick]: preds };
-    delete newAllPreds[oldNick];
+    const newAllPreds={...allPreds,[newNick]:preds}; delete newAllPreds[oldNick];
     setAllPreds(newAllPreds);
-    if (user.nickname === oldNick) {
-      setUser(prev => ({ ...prev, nickname: newNick }));
-      setPredictions(preds);
-    }
+    if(user.nickname===oldNick){ setUser(prev=>({...prev,nickname:newNick})); setPredictions(preds); }
   };
 
   const deleteUser = async (nick) => {
-    const updatedUsers = users.filter(u => u.nickname !== nick);
-    await st.set("osc_users", updatedUsers);
-    await st.del(`preds_${YEAR}_${nick}`);
+    const updatedUsers=users.filter(u=>u.nickname!==nick);
+    await st.set("osc_users",updatedUsers); await st.del(`preds_${YEAR}_${nick}`);
     setUsers(updatedUsers);
-    const newAllPreds = { ...allPreds };
-    delete newAllPreds[nick];
-    setAllPreds(newAllPreds);
+    const newAllPreds={...allPreds}; delete newAllPreds[nick]; setAllPreds(newAllPreds);
   };
 
   const deleteHistoryYear = async (yr) => {
-    const updated = (historyData || []).filter(h => h.year !== yr);
-    await st.set("osc_history", updated);
-    setHistoryData(updated);
+    const updated=(historyData||[]).filter(h=>h.year!==yr);
+    await st.set("osc_history",updated); setHistoryData(updated);
   };
 
+  // FIX 3 — calcScore handles array winners
   const calcScore = (nick) =>
-    Object.entries(winners).filter(([c,w]) => (allPreds[nick] || {})[c] === w).length;
+    Object.entries(winners).filter(([c,w])=>toArr((allPreds[nick]||{})[c]).some(p=>toArr(w).includes(p))).length;
 
+  // FIX 1 — countdown shows "Ceremony ended!" after END_TIME
   const countdown = () => {
-    const diff = LOCK_TIME - now;
-    if (diff <= 0) return "🔒 Locked — ceremony is live!";
-    const d = Math.floor(diff / 86400000);
-    const h = Math.floor((diff % 86400000) / 3600000);
-    const m = Math.floor((diff % 3600000) / 60000);
-    const s = Math.floor((diff % 60000) / 1000);
-    if (d > 0) return `Locks in ${d}d ${h}h ${m}m`;
+    if(now>=END_TIME) return "🎬 Ceremony ended!";
+    const diff=LOCK_TIME-now;
+    if(diff<=0) return "🔒 Ceremony is live!";
+    const d=Math.floor(diff/86400000), h=Math.floor((diff%86400000)/3600000),
+          m=Math.floor((diff%3600000)/60000), s=Math.floor((diff%60000)/1000);
+    if(d>0) return `Locks in ${d}d ${h}h ${m}m`;
     return `Locks in ${h}h ${m}m ${s}s`;
   };
 
-  // ── LOGIN SCREEN ────────────────────────────────────────────────────────────
-  if (view === "login") return (
+  if(view==="login") return (
     <div style={{minHeight:"100vh",background:DARK,display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center"}}>
       <div style={{position:"fixed",inset:0,background:"radial-gradient(ellipse at 20% 50%, rgba(201,168,76,0.04) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(100,80,180,0.05) 0%, transparent 60%)",pointerEvents:"none"}} />
       <div className="fade-up" style={{padding:"0 28px",width:"100%",maxWidth:380,position:"relative"}}>
@@ -379,64 +353,50 @@ function App() {
           <div style={{width:60,height:1,background:`linear-gradient(90deg, transparent, ${GOLD}, transparent)`,margin:"14px auto"}} />
           <div style={{fontSize:13,color:"rgba(255,255,255,0.35)",letterSpacing:"0.05em"}}>Prediction Challenge · 98th Academy Awards</div>
         </div>
-
         <div className="fade-up-1" style={{display:"flex",background:"rgba(255,255,255,0.04)",borderRadius:12,padding:3,marginBottom:20,border:"1px solid rgba(255,255,255,0.08)"}}>
-          {["Sign In","Register"].map((label,i) => (
-            <button key={i} onClick={() => { setIsReg(i===1); setError(""); }}
-              style={{flex:1,padding:"10px",border:"none",borderRadius:10,cursor:"pointer",fontWeight:600,fontSize:14,fontFamily:"'Inter', sans-serif",transition:"all 0.25s",
-                background:isReg===(i===1)?`linear-gradient(135deg, ${GOLD}, #a07828)`:"transparent",
-                color:isReg===(i===1)?"#0a0a14":"rgba(255,255,255,0.4)"}}>
+          {["Sign In","Register"].map((label,i)=>(
+            <button key={i} onClick={()=>{setIsReg(i===1);setError("");}}
+              style={{flex:1,padding:"10px",border:"none",borderRadius:10,cursor:"pointer",fontWeight:600,fontSize:14,fontFamily:"'Inter', sans-serif",transition:"all 0.25s",background:isReg===(i===1)?`linear-gradient(135deg, ${GOLD}, #a07828)`:"transparent",color:isReg===(i===1)?"#0a0a14":"rgba(255,255,255,0.4)"}}>
               {label}
             </button>
           ))}
         </div>
-
         <div className="fade-up-2" style={{display:"flex",flexDirection:"column",gap:12}}>
-          <input style={inp} placeholder="Your nickname" value={loginForm.nickname}
-            onChange={e => setLoginForm(f=>({...f,nickname:e.target.value}))}
-            onKeyDown={e => e.key==="Enter" && handleAuth()} />
-          <input style={inp} placeholder="4-digit PIN" type="password" inputMode="numeric" maxLength={8}
-            value={loginForm.pin} onChange={e => setLoginForm(f=>({...f,pin:e.target.value}))}
-            onKeyDown={e => e.key==="Enter" && handleAuth()} />
-
-          {error && <div style={{color:"#ff8080",fontSize:13,textAlign:"center",padding:"2px 0"}}>{error}</div>}
-
-          <button onClick={handleAuth} disabled={loading}
-            style={{background:`linear-gradient(135deg, ${GOLD} 0%, #a07828 100%)`,color:"#070710",border:"none",borderRadius:12,padding:"14px",fontSize:16,fontWeight:700,cursor:"pointer",marginTop:4,opacity:loading?0.7:1,fontFamily:"'Cormorant Garamond', serif",letterSpacing:"0.08em",transition:"opacity 0.2s"}}>
-            {loading ? "…" : isReg ? "Create Account" : "Enter"}
+          <input style={inp} placeholder="Your nickname" value={loginForm.nickname} onChange={e=>setLoginForm(f=>({...f,nickname:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleAuth()} />
+          <input style={inp} placeholder="4-digit PIN" type="password" inputMode="numeric" maxLength={8} value={loginForm.pin} onChange={e=>setLoginForm(f=>({...f,pin:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleAuth()} />
+          {error&&<div style={{color:"#ff8080",fontSize:13,textAlign:"center",padding:"2px 0"}}>{error}</div>}
+          <button onClick={handleAuth} disabled={loading} style={{background:`linear-gradient(135deg, ${GOLD} 0%, #a07828 100%)`,color:"#070710",border:"none",borderRadius:12,padding:"14px",fontSize:16,fontWeight:700,cursor:"pointer",marginTop:4,opacity:loading?0.7:1,fontFamily:"'Cormorant Garamond', serif",letterSpacing:"0.08em",transition:"opacity 0.2s"}}>
+            {loading?"…":isReg?"Create Account":"Enter"}
           </button>
         </div>
-
         <div className="fade-up-3" style={{textAlign:"center",marginTop:32,color:"rgba(255,255,255,0.2)",fontSize:11,lineHeight:1.8}}>
-          First to register becomes admin · Max 20 players<br/>
-          Predictions lock March 15, 2026 at 7 PM ET
+          First to register becomes admin · Max 20 players<br/>Predictions lock March 15, 2026 at 7 PM ET
         </div>
       </div>
     </div>
   );
 
-  // ── MAIN SHELL ──────────────────────────────────────────────────────────────
   const TABS = [
     {id:"ballot",label:"Ballot",icon:"🗳️"},
     {id:"leaderboard",label:"Board",icon:"📊"},
     {id:"stats",label:"Stats",icon:"🎬"},
     {id:"awards",label:"Wrap",icon:"🏅"},
-    ...(user?.isAdmin ? [{id:"admin",label:"Admin",icon:"⚙️"}] : []),
+    ...(user?.isAdmin?[{id:"admin",label:"Admin",icon:"⚙️"}]:[]),
     {id:"history",label:"History",icon:"📅"},
   ];
 
-  const pickedCount = Object.keys(predictions).length;
+  // FIX 3 — count multiSelect categories as picked if ≥1 nominee selected
+  const pickedCount=Object.keys(predictions).filter(k=>{const v=predictions[k];return Array.isArray(v)?v.length>0:!!v;}).length;
 
   return (
     <div style={{minHeight:"100vh",background:DARK,color:"#fff",fontFamily:"'Inter', sans-serif",maxWidth:480,margin:"0 auto",paddingBottom:70}}>
-
-      {/* Header */}
       <div style={{position:"sticky",top:0,zIndex:50,background:`linear-gradient(180deg, ${DARK} 80%, transparent)`,backdropFilter:"blur(12px)",padding:"14px 18px 12px",borderBottom:`1px solid ${BORDER}`}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div>
             <div style={{fontSize:18,fontWeight:700,color:GOLD,fontFamily:"'Cormorant Garamond', serif",letterSpacing:"0.1em"}}>🏆 OSCARS 2026</div>
-            <div style={{fontSize:10.5,color:isLocked?"#ff7070":"rgba(255,255,255,0.35)",marginTop:2,fontWeight:500,letterSpacing:"0.03em"}}>
-              {isLocked?"🔒 ":"⏱ "}{countdown()}
+            {/* FIX 1 — neutral grey color after ceremony ends */}
+            <div style={{fontSize:10.5,color:isCeremonyOver?"rgba(255,255,255,0.4)":isLocked?"#ff7070":"rgba(255,255,255,0.35)",marginTop:2,fontWeight:500,letterSpacing:"0.03em"}}>
+              {isCeremonyOver?"🎬 ":isLocked?"🔒 ":"⏱ "}{countdown()}
             </div>
           </div>
           <div style={{textAlign:"right"}}>
@@ -446,22 +406,20 @@ function App() {
         </div>
       </div>
 
-      {/* View */}
       <div className="fade-in" key={view}>
-        {view==="ballot"      && <BallotView categories={CATEGORIES} predictions={predictions} onPick={pick} winners={winners} isLocked={isLocked} />}
+        {view==="ballot"      && <BallotView categories={CATEGORIES} predictions={predictions} onPick={pick} winners={winners} isLocked={isLocked} isCeremonyOver={isCeremonyOver} />}
         {view==="leaderboard" && <LeaderboardView users={users} allPreds={allPreds} winners={winners} calcScore={calcScore} myNick={user?.nickname} totalCats={CATEGORIES.length} />}
         {view==="stats"       && <StatsView winners={winners} allPreds={allPreds} categories={CATEGORIES} users={users} />}
         {view==="awards"      && <AwardsView myNick={user?.nickname} users={users} allPreds={allPreds} winners={winners} categories={CATEGORIES} />}
         {view==="admin"       && user?.isAdmin && <AdminView categories={CATEGORIES} winners={winners} onMark={markWinner} onRenameUser={renameUser} onDeleteUser={deleteUser} myNick={user?.nickname} users={users} allPreds={allPreds} historyData={historyData} year={YEAR} />}
-        {view==="history"     && <HistoryView historyData={historyData} onDeleteYear={user?.isAdmin ? deleteHistoryYear : null} />}
+        {view==="history"     && <HistoryView historyData={historyData} onDeleteYear={user?.isAdmin?deleteHistoryYear:null} />}
       </div>
 
-      {/* Bottom nav */}
       <nav style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:"rgba(12,12,24,0.97)",borderTop:`1px solid ${BORDER}`,display:"flex",zIndex:100,backdropFilter:"blur(16px)"}}>
-        {TABS.map(tab => {
-          const active = view===tab.id;
+        {TABS.map(tab=>{
+          const active=view===tab.id;
           return (
-            <button key={tab.id} className="tab-btn" onClick={() => setView(tab.id)}
+            <button key={tab.id} className="tab-btn" onClick={()=>setView(tab.id)}
               style={{flex:1,padding:"10px 4px 9px",background:"none",border:"none",color:active?GOLD:"rgba(255,255,255,0.35)",fontSize:9.5,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,fontFamily:"'Inter', sans-serif",fontWeight:active?600:400,letterSpacing:"0.04em",transition:"color 0.2s"}}>
               <span style={{fontSize:19}}>{tab.icon}</span>
               {tab.label.toUpperCase()}
@@ -476,11 +434,19 @@ function App() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // BALLOT VIEW
 // ═══════════════════════════════════════════════════════════════════════════════
-function BallotView({ categories, predictions, onPick, winners, isLocked }) {
-  const done = Object.keys(predictions).length, total = categories.length;
+function BallotView({ categories, predictions, onPick, winners, isLocked, isCeremonyOver }) {
+  // FIX 3 — count multiSelect categories properly
+  const done=Object.keys(predictions).filter(k=>{const v=predictions[k];return Array.isArray(v)?v.length>0:!!v;}).length;
+  const total=categories.length;
   return (
     <div>
-      {isLocked && (
+      {/* FIX 1 — two distinct banners */}
+      {isCeremonyOver && (
+        <div style={{background:"linear-gradient(135deg, #1a3310, #0d220a)",padding:"10px 16px",textAlign:"center",fontSize:13,fontWeight:600,letterSpacing:"0.05em",color:"#7ed856"}}>
+          🎬 Ceremony has ended — final results below!
+        </div>
+      )}
+      {!isCeremonyOver && isLocked && (
         <div style={{background:"linear-gradient(135deg, #8b0000, #5c0000)",padding:"10px 16px",textAlign:"center",fontSize:13,fontWeight:600,letterSpacing:"0.05em"}}>
           🔒 Predictions are locked — the ceremony is live!
         </div>
@@ -495,30 +461,38 @@ function BallotView({ categories, predictions, onPick, winners, isLocked }) {
         </div>
       </div>
 
-      {categories.map(cat => {
-        const myPick = predictions[cat.id], winner = winners[cat.id];
-        const gotRight = myPick && winner && myPick===winner;
-        const gotWrong = myPick && winner && myPick!==winner;
+      {categories.map(cat=>{
+        const rawWinner=winners[cat.id];
+        const myPick=predictions[cat.id];
+        const winArr=toArr(rawWinner);
+        const pickArr=toArr(myPick);
+        // FIX 3 — correct/wrong uses array comparison
+        const gotRight=pickArr.length>0&&winArr.length>0&&pickArr.some(p=>winArr.includes(p));
+        const gotWrong=pickArr.length>0&&winArr.length>0&&!pickArr.some(p=>winArr.includes(p));
         return (
           <div key={cat.id} style={{margin:"8px 14px",background:CARD2,borderRadius:14,border:`1px solid ${gotRight?"rgba(107,232,154,0.3)":gotWrong?"rgba(255,100,100,0.15)":BORDER}`,overflow:"hidden"}}>
             <div style={{padding:"12px 14px 8px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <span style={{fontSize:15}}>{cat.emoji}</span>
                 <span style={{fontSize:15,fontWeight:600,color:GOLD,fontFamily:"'Cormorant Garamond', serif",letterSpacing:"0.02em"}}>{cat.name}</span>
+                {/* FIX 3 — badge hint for multi-select */}
+                {cat.multiSelect&&<span style={{fontSize:9,color:"rgba(255,255,255,0.3)",background:"rgba(255,255,255,0.07)",padding:"2px 6px",borderRadius:4,marginLeft:2}}>PICK MULTIPLE</span>}
               </div>
-              {gotRight && <span style={{fontSize:11,color:"#6be89a",fontWeight:600}}>✓ Correct!</span>}
-              {gotWrong && <span style={{fontSize:11,color:"#ff7070"}}>✗ Missed</span>}
+              {gotRight&&<span style={{fontSize:11,color:"#6be89a",fontWeight:600}}>✓ Correct!</span>}
+              {gotWrong&&<span style={{fontSize:11,color:"#ff7070"}}>✗ Missed</span>}
             </div>
             <div style={{padding:"0 10px 10px",display:"flex",flexDirection:"column",gap:5}}>
-              {cat.nominees.map(nom => {
-                const isMyPick=myPick===nom, isWinner=winner===nom;
-                let bg="rgba(255,255,255,0.03)", border="rgba(255,255,255,0.07)", textColor="rgba(255,255,255,0.55)", icon="○";
-                if (isWinner)     { bg="rgba(201,168,76,0.12)"; border="rgba(201,168,76,0.4)";   textColor="#fff";     icon="🏆"; }
-                else if (isMyPick){ bg="rgba(80,100,220,0.15)"; border="rgba(120,140,255,0.35)"; textColor="#c5cbff"; icon="●"; }
+              {cat.nominees.map(nom=>{
+                const isMyPick=cat.multiSelect?pickArr.includes(nom):myPick===nom;
+                const isWinner=winArr.includes(nom);
+                let bg="rgba(255,255,255,0.03)",border="rgba(255,255,255,0.07)",textColor="rgba(255,255,255,0.55)",icon="○";
+                if(isWinner)     {bg="rgba(201,168,76,0.12)";border="rgba(201,168,76,0.4)";  textColor="#fff";    icon="🏆";}
+                else if(isMyPick){bg="rgba(80,100,220,0.15)";border="rgba(120,140,255,0.35)";textColor="#c5cbff";icon="●";}
+                // FIX 3 — multiSelect: don't disable once a winner is set (user may still pick)
+                const disabled=isLocked||(!cat.multiSelect&&winArr.length>0);
                 return (
-                  <button key={nom} className="btn-pick" onClick={() => onPick(cat.id,nom)}
-                    disabled={isLocked || !!winner}
-                    style={{background:bg,border:`1px solid ${border}`,borderRadius:9,padding:"9px 12px",textAlign:"left",cursor:(isLocked||winner)?"default":"pointer",display:"flex",alignItems:"center",gap:10,width:"100%"}}>
+                  <button key={nom} className="btn-pick" onClick={()=>onPick(cat.id,nom)} disabled={disabled}
+                    style={{background:bg,border:`1px solid ${border}`,borderRadius:9,padding:"9px 12px",textAlign:"left",cursor:disabled?"default":"pointer",display:"flex",alignItems:"center",gap:10,width:"100%"}}>
                     <span style={{fontSize:14,width:18,textAlign:"center",flexShrink:0,lineHeight:1}}>{icon}</span>
                     <span style={{fontSize:13,color:textColor,fontWeight:(isMyPick||isWinner)?600:400,lineHeight:1.35}}>{nom}</span>
                   </button>
@@ -537,9 +511,9 @@ function BallotView({ categories, predictions, onPick, winners, isLocked }) {
 // LEADERBOARD VIEW
 // ═══════════════════════════════════════════════════════════════════════════════
 function LeaderboardView({ users, allPreds, winners, calcScore, myNick, totalCats }) {
-  const totalWinners = Object.keys(winners).length;
-  const sorted = [...users].sort((a,b) => calcScore(b.nickname)-calcScore(a.nickname));
-  const MEDALS = ["🥇","🥈","🥉"];
+  const totalWinners=Object.keys(winners).length;
+  const sorted=[...users].sort((a,b)=>calcScore(b.nickname)-calcScore(a.nickname));
+  const MEDALS=["🥇","🥈","🥉"];
   return (
     <div>
       <div style={{margin:"14px 14px 10px",background:`linear-gradient(135deg, ${CARD2}, #0a0a1a)`,borderRadius:16,padding:"22px 24px",border:`1px solid ${BORDER}`,textAlign:"center"}}>
@@ -550,11 +524,11 @@ function LeaderboardView({ users, allPreds, winners, calcScore, myNick, totalCat
           <div style={{width:`${(totalWinners/totalCats)*100}%`,height:"100%",background:`linear-gradient(90deg, ${GOLD}, #6be89a)`,borderRadius:6,transition:"width 0.6s ease"}} />
         </div>
       </div>
-
-      {sorted.map((u,i) => {
-        const s = calcScore(u.nickname), isMe = u.nickname===myNick;
-        const predCount = Object.keys(allPreds[u.nickname]||{}).length;
-        const pct = totalWinners>0?(s/totalWinners)*100:0;
+      {sorted.map((u,i)=>{
+        const s=calcScore(u.nickname), isMe=u.nickname===myNick;
+        // FIX 3 — count multiSelect preds correctly
+        const predCount=Object.keys(allPreds[u.nickname]||{}).filter(k=>{const v=(allPreds[u.nickname]||{})[k];return Array.isArray(v)?v.length>0:!!v;}).length;
+        const pct=totalWinners>0?(s/totalWinners)*100:0;
         return (
           <div key={u.nickname} style={{margin:"6px 14px",background:isMe?`linear-gradient(135deg, rgba(201,168,76,0.08), rgba(201,168,76,0.03))`:CARD2,borderRadius:14,padding:"14px 16px",border:`1px solid ${isMe?"rgba(201,168,76,0.35)":"rgba(255,255,255,0.06)"}`}}>
             <div style={{display:"flex",alignItems:"center",gap:12}}>
@@ -562,8 +536,9 @@ function LeaderboardView({ users, allPreds, winners, calcScore, myNick, totalCat
               <div style={{flex:1}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}>
                   <span style={{fontWeight:600,fontSize:14,color:isMe?GOLD:"#e8e8e8"}}>{u.nickname}{isMe?" (you)":""}{u.isAdmin?" 👑":""}</span>
+                  {/* FIX 2 — "out of" instead of "/" */}
                   <span style={{fontSize:20,fontWeight:700,color:GOLD,fontFamily:"'Cormorant Garamond', serif"}}>
-                    {s}<span style={{fontSize:12,color:"rgba(255,255,255,0.3)",fontFamily:"'Inter'",fontWeight:400}}>/{totalWinners||"?"}</span>
+                    {s}<span style={{fontSize:12,color:"rgba(255,255,255,0.35)",fontFamily:"'Inter'",fontWeight:400}}> out of {totalWinners||"?"}</span>
                   </span>
                 </div>
                 <div style={{height:4,background:"rgba(255,255,255,0.06)",borderRadius:6,overflow:"hidden"}}>
@@ -585,25 +560,23 @@ function LeaderboardView({ users, allPreds, winners, calcScore, myNick, totalCat
 // ═══════════════════════════════════════════════════════════════════════════════
 function StatsView({ winners, allPreds, categories, users }) {
   const [tab, setTab] = useState("films");
+
+  // FIX 3 — handle array winners for film win counting
   const filmNoms={}, filmWins={};
-  categories.forEach(cat => {
-    cat.nominees.forEach(nom => { const f=getFilm(cat.id,nom); filmNoms[f]=(filmNoms[f]||0)+1; });
-    if (winners[cat.id]) { const f=getFilm(cat.id,winners[cat.id]); filmWins[f]=(filmWins[f]||0)+1; }
+  categories.forEach(cat=>{
+    cat.nominees.forEach(nom=>{const f=getFilm(cat.id,nom);filmNoms[f]=(filmNoms[f]||0)+1;});
+    if(winners[cat.id]) toArr(winners[cat.id]).forEach(w=>{const f=getFilm(cat.id,w);filmWins[f]=(filmWins[f]||0)+1;});
   });
-  const maxNoms = Math.max(...Object.values(filmNoms),1);
-  const films = Object.keys(filmNoms).sort((a,b)=>(filmWins[b]||0)-(filmWins[a]||0)||filmNoms[b]-filmNoms[a]).slice(0,18);
+  const maxNoms=Math.max(...Object.values(filmNoms),1);
+  const films=Object.keys(filmNoms).sort((a,b)=>(filmWins[b]||0)-(filmWins[a]||0)||filmNoms[b]-filmNoms[a]).slice(0,18);
 
-  const catStats = categories.map(cat => {
-    if (!winners[cat.id]) return null;
-    const correct = users.filter(u => (allPreds[u.nickname]||{})[cat.id]===winners[cat.id]).length;
-    return { cat, correct, total:users.length, winner:winners[cat.id] };
+  // FIX 3 — catStats handles array winners
+  const catStats=categories.map(cat=>{
+    if(!winners[cat.id]) return null;
+    const winArr=toArr(winners[cat.id]);
+    const correct=users.filter(u=>toArr((allPreds[u.nickname]||{})[cat.id]).some(p=>winArr.includes(p))).length;
+    return {cat,correct,total:users.length,winner:winArr.join(" & ")};
   }).filter(Boolean);
-
-  const popularPicks = categories.map(cat => {
-    const counts={};
-    users.forEach(u => { const p=(allPreds[u.nickname]||{})[cat.id]; if(p) counts[p]=(counts[p]||0)+1; });
-    return { cat, picks:Object.entries(counts).sort((a,b)=>b[1]-a[1]) };
-  }).filter(c=>c.picks.length>0);
 
   const ts=(t)=>({padding:"8px 16px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,fontFamily:"'Inter', sans-serif",letterSpacing:"0.05em",background:tab===t?`linear-gradient(135deg, ${GOLD}, #a07828)`:"rgba(255,255,255,0.06)",color:tab===t?"#07070f":"rgba(255,255,255,0.5)",transition:"all 0.2s"});
 
@@ -617,27 +590,46 @@ function StatsView({ winners, allPreds, categories, users }) {
 
       {tab==="films" && (
         <div style={{padding:"6px 14px"}}>
-          {films.map(film => (
-            <div key={film} style={{background:CARD2,borderRadius:10,padding:"10px 14px",marginBottom:6,border:`1px solid ${filmWins[film]?"rgba(201,168,76,0.25)":"rgba(255,255,255,0.05)"}`}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontSize:13,fontWeight:filmWins[film]?600:400,color:filmWins[film]?"#fff":"rgba(255,255,255,0.55)",flex:1,marginRight:8,lineHeight:1.3}}>{film}</span>
-                <div style={{flexShrink:0,textAlign:"right"}}>
-                  {filmWins[film]>0 && <span style={{color:GOLD,fontWeight:700,marginRight:4}}>🏆 {filmWins[film]}</span>}
-                  <span style={{color:"rgba(255,255,255,0.25)",fontSize:11}}>{filmNoms[film]} nom{filmNoms[film]!==1?"s":""}</span>
+          {films.map(film=>{
+            const noms=filmNoms[film]||0, wins=filmWins[film]||0;
+            return (
+              <div key={film} style={{background:CARD2,borderRadius:10,padding:"10px 14px",marginBottom:6,border:`1px solid ${wins?"rgba(201,168,76,0.25)":"rgba(255,255,255,0.05)"}`}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontSize:13,fontWeight:wins?600:400,color:wins?"#fff":"rgba(255,255,255,0.55)",flex:1,marginRight:8,lineHeight:1.3}}>{film}</span>
+                  <div style={{flexShrink:0,textAlign:"right",display:"flex",alignItems:"center",gap:8}}>
+                    {wins>0&&<span style={{color:GOLD,fontWeight:700}}>🏆 {wins}</span>}
+                    {/* FIX 5 — much more visible nominations count */}
+                    <span style={{color:"rgba(255,255,255,0.6)",fontSize:12,fontWeight:500}}>{noms} nom{noms!==1?"s":""}</span>
+                  </div>
+                </div>
+                {/* FIX 4 — two separate bars: grey for noms, gold for wins, both vs maxNoms */}
+                <div style={{marginTop:9,display:"flex",flexDirection:"column",gap:4}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <div style={{flex:1,height:3,background:"rgba(255,255,255,0.06)",borderRadius:4,overflow:"hidden"}}>
+                      <div style={{width:`${(noms/maxNoms)*100}%`,height:"100%",background:"rgba(255,255,255,0.22)",borderRadius:4}} />
+                    </div>
+                    <span style={{fontSize:9,color:"rgba(255,255,255,0.3)",width:22,textAlign:"right"}}>nom</span>
+                  </div>
+                  {wins>0&&(
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <div style={{flex:1,height:3,background:"rgba(255,255,255,0.06)",borderRadius:4,overflow:"hidden"}}>
+                        <div style={{width:`${(wins/maxNoms)*100}%`,height:"100%",background:`linear-gradient(90deg, ${GOLD}, ${GOLD2})`,borderRadius:4,transition:"width 0.5s ease"}} />
+                      </div>
+                      <span style={{fontSize:9,color:GOLD,width:22,textAlign:"right"}}>win</span>
+                    </div>
+                  )}
                 </div>
               </div>
-              <div style={{marginTop:7,height:3,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden"}}>
-                <div style={{width:`${(filmNoms[film]/maxNoms)*100}%`,height:"100%",background:filmWins[film]?`linear-gradient(90deg, ${GOLD}, ${GOLD2})`:"#2a2a3e",borderRadius:4}} />
-              </div>
-            </div>
-          ))}
-          {Object.keys(winners).length===0 && <div style={{textAlign:"center",padding:"40px 20px",color:"rgba(255,255,255,0.25)",fontSize:13}}>Film wins appear as the ceremony progresses</div>}
+            );
+          })}
+          {Object.keys(winners).length===0&&<div style={{textAlign:"center",padding:"40px 20px",color:"rgba(255,255,255,0.25)",fontSize:13}}>Film wins appear as the ceremony progresses</div>}
         </div>
       )}
+
       {tab==="accuracy" && (
         <div style={{padding:"6px 14px"}}>
-          {catStats.length===0 && <div style={{textAlign:"center",padding:"40px 20px",color:"rgba(255,255,255,0.25)",fontSize:13}}>Accuracy stats appear after winners are announced</div>}
-          {catStats.map(({cat,correct,total,winner}) => (
+          {catStats.length===0&&<div style={{textAlign:"center",padding:"40px 20px",color:"rgba(255,255,255,0.25)",fontSize:13}}>Accuracy stats appear after winners are announced</div>}
+          {catStats.map(({cat,correct,total,winner})=>(
             <div key={cat.id} style={{background:CARD2,borderRadius:10,padding:"11px 14px",marginBottom:6,border:"1px solid rgba(255,255,255,0.05)"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                 <div style={{flex:1}}>
@@ -649,7 +641,7 @@ function StatsView({ winners, allPreds, categories, users }) {
                   <div style={{fontSize:10,color:"rgba(255,255,255,0.25)"}}>correct</div>
                 </div>
               </div>
-              {total>0 && <div style={{marginTop:8,height:3,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden"}}><div style={{width:`${(correct/total)*100}%`,height:"100%",background:"#6be89a",borderRadius:4}} /></div>}
+              {total>0&&<div style={{marginTop:8,height:3,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden"}}><div style={{width:`${(correct/total)*100}%`,height:"100%",background:"#6be89a",borderRadius:4}} /></div>}
             </div>
           ))}
         </div>
@@ -657,9 +649,9 @@ function StatsView({ winners, allPreds, categories, users }) {
 
       {tab==="difficulty" && (
         <div style={{padding:"6px 14px"}}>
-          {catStats.length===0 && <div style={{textAlign:"center",padding:"40px 20px",color:"rgba(255,255,255,0.25)",fontSize:13}}>Difficulty ranks appear after winners are announced</div>}
-          {catStats.length>0 && <div style={{fontSize:11,color:"rgba(255,255,255,0.25)",padding:"4px 2px 10px",letterSpacing:"0.05em",fontWeight:500}}>HARDEST → EASIEST · % of group who got it right</div>}
-          {[...catStats].sort((a,b)=>(a.correct/a.total)-(b.correct/b.total)).map(({cat,correct,total,winner},idx) => {
+          {catStats.length===0&&<div style={{textAlign:"center",padding:"40px 20px",color:"rgba(255,255,255,0.25)",fontSize:13}}>Difficulty ranks appear after winners are announced</div>}
+          {catStats.length>0&&<div style={{fontSize:11,color:"rgba(255,255,255,0.25)",padding:"4px 2px 10px",letterSpacing:"0.05em",fontWeight:500}}>HARDEST → EASIEST · % of group who got it right</div>}
+          {[...catStats].sort((a,b)=>(a.correct/a.total)-(b.correct/b.total)).map(({cat,correct,total,winner},idx)=>{
             const pct=total>0?Math.round((correct/total)*100):0;
             const col=pct>=75?"#6be89a":pct>=40?GOLD:"#ff7070";
             return (
@@ -684,33 +676,16 @@ function StatsView({ winners, allPreds, categories, users }) {
           })}
         </div>
       )}
-    {/*   {tab==="consensus" && (
-        <div style={{padding:"6px 14px"}}>
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",padding:"4px 2px 10px",letterSpacing:"0.04em"}}>WHAT YOUR GROUP IS PICKING</div>
-          {popularPicks.length===0 && <div style={{textAlign:"center",padding:"40px 20px",color:"rgba(255,255,255,0.25)",fontSize:13}}>Appears once players submit predictions</div>}
-          {popularPicks.map(({cat,picks}) => (
-            <div key={cat.id} style={{background:CARD2,borderRadius:10,padding:"11px 14px",marginBottom:6,border:"1px solid rgba(255,255,255,0.05)"}}>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:6,letterSpacing:"0.04em"}}>{cat.emoji} {cat.name.toUpperCase()}</div>
-              {picks.slice(0,3).map(([nominee,count]) => (
-                <div key={nominee} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
-                  <span style={{fontSize:12,color:count===picks[0][1]?"#fff":"rgba(255,255,255,0.45)",flex:1,marginRight:8}}>{nominee}</span>
-                  <span style={{fontSize:12,color:GOLD,fontWeight:600}}>{count} pick{count!==1?"s":""}</span>
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      )} */}
     </div>
-  ); 
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ADMIN VIEW
 // ═══════════════════════════════════════════════════════════════════════════════
 function AdminView({ categories, winners, onMark, onRenameUser, onDeleteUser, myNick, users, allPreds, historyData, year }) {
-  const [tab, setTab] = useState("winners");
-  const [saved, setSaved] = useState(false);
+  const [tab, setTab]         = useState("winners");
+  const [saved, setSaved]     = useState(false);
   const [renamingUser, setRenamingUser] = useState(null);
   const [newNick, setNewNick] = useState("");
   const [newPinVal, setNewPinVal] = useState("");
@@ -718,84 +693,109 @@ function AdminView({ categories, winners, onMark, onRenameUser, onDeleteUser, my
   const [renameLoading, setRenameLoading] = useState(false);
   const [deletingUser, setDeletingUser] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const importRef = useRef();
+  const [importMsg, setImportMsg] = useState("");
 
   const doDelete = async () => {
     setDeleteLoading(true);
     await onDeleteUser(deletingUser.nickname);
-    setDeletingUser(null);
-    setDeleteLoading(false);
+    setDeletingUser(null); setDeleteLoading(false);
   };
 
   const doRename = async () => {
-    if (!newNick.trim()) { setRenameError("Enter a new nickname"); return; }
-    if (newPinVal.length < 4) { setRenameError("PIN must be at least 4 digits"); return; }
-    setRenameLoading(true);
-    setRenameError("");
-    try {
-      await onRenameUser(renamingUser.nickname, newNick.trim(), newPinVal);
-      setRenamingUser(null);
-    } catch(e) {
-      setRenameError(e.message || "Rename failed");
-    }
+    if(!newNick.trim()){setRenameError("Enter a new nickname");return;}
+    if(newPinVal.length<4){setRenameError("PIN must be at least 4 digits");return;}
+    setRenameLoading(true); setRenameError("");
+    try { await onRenameUser(renamingUser.nickname,newNick.trim(),newPinVal); setRenamingUser(null); }
+    catch(e) { setRenameError(e.message||"Rename failed"); }
     setRenameLoading(false);
   };
 
   const saveToHistory = async () => {
-    const scores = users.map(u => ({
-      nickname: u.nickname,
-      score: Object.entries(winners).filter(([c,w]) => (allPreds[u.nickname]||{})[c]===w).length
-    }));
-    const entry = { year, winners, scores, savedAt: new Date().toISOString() };
-    const existing = (historyData||[]).filter(h=>h.year!==year);
-    await st.set("osc_history", [...existing, entry]);
+    // FIX 3 — score uses toArr
+    const scores=users.map(u=>({nickname:u.nickname,score:Object.entries(winners).filter(([c,w])=>toArr((allPreds[u.nickname]||{})[c]).some(p=>toArr(w).includes(p))).length}));
+    const entry={year,winners,scores,savedAt:new Date().toISOString()};
+    const existing=(historyData||[]).filter(h=>h.year!==year);
+    await st.set("osc_history",[...existing,entry]);
     setSaved(true); setTimeout(()=>setSaved(false),3000);
   };
 
+  // FIX 6 — import JSON history
+  const handleImport = async (e) => {
+    const file=e.target.files[0]; if(!file) return;
+    try {
+      const text=await file.text();
+      const arr=JSON.parse(text);
+      const imported=Array.isArray(arr)?arr:[arr];
+      const existing=historyData||[];
+      const existingYears=new Set(existing.map(h=>h.year));
+      const newEntries=imported.filter(h=>!existingYears.has(h.year));
+      if(newEntries.length===0){setImportMsg("No new years to import (already have all)");setTimeout(()=>setImportMsg(""),5000);return;}
+      await st.set("osc_history",[...existing,...newEntries]);
+      setImportMsg(`✓ Imported ${newEntries.length} year(s): ${newEntries.map(h=>h.year).join(", ")}`);
+      setTimeout(()=>setImportMsg(""),6000);
+    } catch {
+      setImportMsg("✗ Failed — make sure it's a valid JSON export file");
+      setTimeout(()=>setImportMsg(""),5000);
+    }
+    e.target.value="";
+  };
+
   const ts=(t)=>({padding:"8px 16px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,fontFamily:"'Inter', sans-serif",letterSpacing:"0.04em",background:tab===t?`linear-gradient(135deg, ${GOLD}, #a07828)`:"rgba(255,255,255,0.06)",color:tab===t?"#07070f":"rgba(255,255,255,0.4)",transition:"all 0.2s"});
+
+  // FIX 3 — count multi-select winners properly
+  const markedCount=Object.entries(winners).filter(([,v])=>toArr(v).length>0).length;
 
   return (
     <div>
       <div style={{padding:"12px 14px 8px",display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
         <button style={ts("winners")} onClick={()=>setTab("winners")}>Mark Winners</button>
         <button style={ts("members")} onClick={()=>setTab("members")}>Members</button>
+        {/* FIX 6 — Data tab */}
+        <button style={ts("data")} onClick={()=>setTab("data")}>💾 Data</button>
         <button onClick={saveToHistory}
           style={{marginLeft:"auto",padding:"8px 14px",borderRadius:8,border:"none",cursor:"pointer",background:saved?"rgba(107,232,154,0.2)":"rgba(107,232,154,0.1)",color:saved?"#6be89a":"rgba(107,232,154,0.6)",fontWeight:600,fontSize:12,fontFamily:"'Inter', sans-serif",transition:"all 0.3s"}}>
           {saved?"✓ Saved!":"📅 Save Year"}
         </button>
       </div>
       <div style={{padding:"2px 16px 8px",fontSize:11,color:"rgba(255,255,255,0.25)",letterSpacing:"0.04em"}}>
-        {Object.keys(winners).length}/{categories.length} WINNERS MARKED · TAP WINNER TO TOGGLE
+        {markedCount}/{categories.length} WINNERS MARKED · TAP TO TOGGLE
       </div>
 
-      {tab==="winners" && categories.map(cat => (
-        <div key={cat.id} style={{margin:"6px 14px",background:CARD2,borderRadius:14,border:`1px solid ${BORDER}`,overflow:"hidden"}}>
-          <div style={{padding:"10px 14px 8px",display:"flex",alignItems:"center",gap:8}}>
-            <span>{cat.emoji}</span>
-            <span style={{fontSize:14,fontWeight:600,color:GOLD,fontFamily:"'Cormorant Garamond', serif",letterSpacing:"0.02em"}}>{cat.name}</span>
-            {winners[cat.id] && <span style={{marginLeft:"auto",fontSize:10,color:"#6be89a",fontWeight:600}}>✓ SET</span>}
+      {tab==="winners" && categories.map(cat=>{
+        // FIX 3 — multi-select admin marking
+        const winArr=toArr(winners[cat.id]);
+        return (
+          <div key={cat.id} style={{margin:"6px 14px",background:CARD2,borderRadius:14,border:`1px solid ${BORDER}`,overflow:"hidden"}}>
+            <div style={{padding:"10px 14px 8px",display:"flex",alignItems:"center",gap:8}}>
+              <span>{cat.emoji}</span>
+              <span style={{fontSize:14,fontWeight:600,color:GOLD,fontFamily:"'Cormorant Garamond', serif",letterSpacing:"0.02em"}}>{cat.name}</span>
+              {cat.multiSelect&&<span style={{fontSize:9,color:"rgba(255,255,255,0.3)",background:"rgba(255,255,255,0.07)",padding:"2px 6px",borderRadius:4}}>MULTI</span>}
+              {winArr.length>0&&<span style={{marginLeft:"auto",fontSize:10,color:"#6be89a",fontWeight:600}}>✓ {winArr.length>1?`${winArr.length} SET`:"SET"}</span>}
+            </div>
+            <div style={{padding:"0 10px 10px",display:"flex",flexDirection:"column",gap:5}}>
+              {cat.nominees.map(nom=>{
+                const isWinner=winArr.includes(nom);
+                const pickCount=users.filter(u=>toArr((allPreds[u.nickname]||{})[cat.id]).includes(nom)).length;
+                return (
+                  <button key={nom} onClick={()=>onMark(cat.id,nom)}
+                    style={{background:isWinner?"rgba(201,168,76,0.15)":"rgba(255,255,255,0.03)",border:`1px solid ${isWinner?"rgba(201,168,76,0.45)":"rgba(255,255,255,0.07)"}`,borderRadius:9,padding:"9px 12px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:10,transition:"all 0.15s"}}>
+                    <span style={{fontSize:16,flexShrink:0}}>{isWinner?"🏆":"○"}</span>
+                    <span style={{fontSize:13,color:isWinner?"#fff":"rgba(255,255,255,0.5)",fontWeight:isWinner?600:400,flex:1}}>{nom}</span>
+                    {pickCount>0&&<span style={{fontSize:10,color:isWinner?GOLD:"rgba(255,255,255,0.25)",fontWeight:600}}>{pickCount} picked</span>}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <div style={{padding:"0 10px 10px",display:"flex",flexDirection:"column",gap:5}}>
-            {cat.nominees.map(nom => {
-              const isWinner=winners[cat.id]===nom;
-              const pickCount=users.filter(u=>(allPreds[u.nickname]||{})[cat.id]===nom).length;
-              return (
-                <button key={nom} onClick={()=>onMark(cat.id,isWinner?null:nom)}
-                  style={{background:isWinner?"rgba(201,168,76,0.15)":"rgba(255,255,255,0.03)",border:`1px solid ${isWinner?"rgba(201,168,76,0.45)":"rgba(255,255,255,0.07)"}`,borderRadius:9,padding:"9px 12px",textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",gap:10,transition:"all 0.15s"}}>
-                  <span style={{fontSize:16,flexShrink:0}}>{isWinner?"🏆":"○"}</span>
-                  <span style={{fontSize:13,color:isWinner?"#fff":"rgba(255,255,255,0.5)",fontWeight:isWinner?600:400,flex:1}}>{nom}</span>
-                  {pickCount>0 && <span style={{fontSize:10,color:isWinner?GOLD:"rgba(255,255,255,0.25)",fontWeight:600}}>{pickCount} picked</span>}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ))}
+        );
+      })}
 
       {tab==="members" && (
         <div style={{padding:"0 14px"}}>
-          {users.map(u => {
-            const predCount=Object.keys(allPreds[u.nickname]||{}).length;
-            const score=Object.entries(winners).filter(([c,w])=>(allPreds[u.nickname]||{})[c]===w).length;
+          {users.map(u=>{
+            const predCount=Object.keys(allPreds[u.nickname]||{}).filter(k=>{const v=(allPreds[u.nickname]||{})[k];return Array.isArray(v)?v.length>0:!!v;}).length;
+            const score=Object.entries(winners).filter(([c,w])=>toArr((allPreds[u.nickname]||{})[c]).some(p=>toArr(w).includes(p))).length;
             return (
               <div key={u.nickname} style={{background:CARD2,borderRadius:12,padding:"13px 16px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid rgba(255,255,255,0.05)"}}>
                 <div style={{flex:1}}>
@@ -803,15 +803,11 @@ function AdminView({ categories, winners, onMark, onRenameUser, onDeleteUser, my
                   <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:3}}>{predCount}/{CATEGORIES.length} predictions</div>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <button onClick={()=>{ setRenamingUser(u); setNewNick(u.nickname); setNewPinVal(""); setRenameError(""); }}
-                    style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"6px 10px",color:"rgba(255,255,255,0.45)",cursor:"pointer",fontSize:13,lineHeight:1}}>
-                    ✏️
-                  </button>
-                  {u.nickname !== myNick && (
+                  <button onClick={()=>{setRenamingUser(u);setNewNick(u.nickname);setNewPinVal("");setRenameError("");}}
+                    style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"6px 10px",color:"rgba(255,255,255,0.45)",cursor:"pointer",fontSize:13,lineHeight:1}}>✏️</button>
+                  {u.nickname!==myNick&&(
                     <button onClick={()=>setDeletingUser(u)}
-                      style={{background:"rgba(220,50,50,0.08)",border:"1px solid rgba(220,50,50,0.2)",borderRadius:8,padding:"6px 10px",color:"rgba(255,100,100,0.55)",cursor:"pointer",fontSize:13,lineHeight:1}}>
-                      🗑️
-                    </button>
+                      style={{background:"rgba(220,50,50,0.08)",border:"1px solid rgba(220,50,50,0.2)",borderRadius:8,padding:"6px 10px",color:"rgba(255,100,100,0.55)",cursor:"pointer",fontSize:13,lineHeight:1}}>🗑️</button>
                   )}
                   <div style={{textAlign:"right"}}>
                     <div style={{fontSize:18,fontWeight:700,color:GOLD,fontFamily:"'Cormorant Garamond', serif"}}>{score}</div>
@@ -824,7 +820,33 @@ function AdminView({ categories, winners, onMark, onRenameUser, onDeleteUser, my
         </div>
       )}
 
-      {deletingUser && (
+      {/* FIX 6 — Data tab: import + export */}
+      {tab==="data" && (
+        <div style={{padding:"0 14px"}}>
+          <div style={{background:CARD2,borderRadius:14,padding:"18px",marginBottom:10,border:`1px solid ${BORDER}`}}>
+            <div style={{fontSize:16,fontWeight:600,color:GOLD,marginBottom:6,fontFamily:"'Cormorant Garamond', serif"}}>📤 Export All History</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",lineHeight:1.6,marginBottom:12}}>
+              Download a full JSON backup. Save this before your Firestore trial expires so you can re-import next year.
+            </div>
+            <ExportButton year={year} winners={winners} users={users} allPreds={allPreds} />
+          </div>
+          <div style={{background:CARD2,borderRadius:14,padding:"18px",border:`1px solid ${BORDER}`}}>
+            <div style={{fontSize:16,fontWeight:600,color:GOLD,marginBottom:6,fontFamily:"'Cormorant Garamond', serif"}}>📥 Import History</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",lineHeight:1.6,marginBottom:12}}>
+              Load a previously exported <code style={{background:"rgba(255,255,255,0.08)",padding:"1px 5px",borderRadius:4}}>oscars_history.json</code>. New years merge in; existing years are not overwritten.
+            </div>
+            <input ref={importRef} type="file" accept=".json" style={{display:"none"}} onChange={handleImport} />
+            <button onClick={()=>importRef.current?.click()}
+              style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:10,padding:"11px 18px",color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer",width:"100%",fontFamily:"'Inter', sans-serif"}}>
+              📂 Choose JSON file…
+            </button>
+            {importMsg&&<div style={{marginTop:10,fontSize:12,color:importMsg.startsWith("✓")?"#6be89a":"#ff8080",lineHeight:1.5}}>{importMsg}</div>}
+          </div>
+        </div>
+      )}
+
+      {/* Delete user modal */}
+      {deletingUser&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}} onClick={()=>setDeletingUser(null)}>
           <div style={{background:"#161628",borderRadius:16,padding:"24px",width:"100%",maxWidth:340,border:"1px solid rgba(220,50,50,0.3)"}} onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:18,fontWeight:700,color:"#ff7070",fontFamily:"'Cormorant Garamond', serif",marginBottom:8}}>Delete Player?</div>
@@ -839,7 +861,8 @@ function AdminView({ categories, winners, onMark, onRenameUser, onDeleteUser, my
         </div>
       )}
 
-      {renamingUser && (
+      {/* Rename user modal */}
+      {renamingUser&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}} onClick={()=>setRenamingUser(null)}>
           <div style={{background:"#161628",borderRadius:16,padding:"24px",width:"100%",maxWidth:340,border:`1px solid ${BORDER}`}} onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:18,fontWeight:700,color:GOLD,fontFamily:"'Cormorant Garamond', serif",marginBottom:4}}>Rename Player</div>
@@ -847,7 +870,7 @@ function AdminView({ categories, winners, onMark, onRenameUser, onDeleteUser, my
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               <input style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:10,padding:"13px 16px",fontSize:15,color:"#fff",width:"100%",fontFamily:"'Inter', sans-serif"}} placeholder="New nickname" value={newNick} onChange={e=>setNewNick(e.target.value)} />
               <input style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:10,padding:"13px 16px",fontSize:15,color:"#fff",width:"100%",fontFamily:"'Inter', sans-serif"}} placeholder="New PIN (4+ digits)" type="password" inputMode="numeric" maxLength={8} value={newPinVal} onChange={e=>setNewPinVal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doRename()} />
-              {renameError && <div style={{color:"#ff8080",fontSize:12,textAlign:"center"}}>{renameError}</div>}
+              {renameError&&<div style={{color:"#ff8080",fontSize:12,textAlign:"center"}}>{renameError}</div>}
               <div style={{display:"flex",gap:8,marginTop:6}}>
                 <button onClick={()=>setRenamingUser(null)} style={{flex:1,padding:"11px",borderRadius:10,border:"1px solid rgba(255,255,255,0.12)",background:"transparent",color:"rgba(255,255,255,0.4)",cursor:"pointer",fontFamily:"'Inter', sans-serif",fontWeight:500,fontSize:14}}>Cancel</button>
                 <button onClick={doRename} disabled={renameLoading} style={{flex:1,padding:"11px",borderRadius:10,border:"none",background:`linear-gradient(135deg, ${GOLD}, #a07828)`,color:"#070710",cursor:"pointer",fontWeight:700,fontFamily:"'Cormorant Garamond', serif",letterSpacing:"0.05em",fontSize:15,opacity:renameLoading?0.7:1}}>
@@ -862,21 +885,46 @@ function AdminView({ categories, winners, onMark, onRenameUser, onDeleteUser, my
   );
 }
 
+// FIX 6 — Export button component (fetches stored history + merges current year)
+function ExportButton({ year, winners, users, allPreds }) {
+  const [busy, setBusy] = useState(false);
+  const run = async () => {
+    setBusy(true);
+    try {
+      const stored=await st.get("osc_history")||[];
+      const scores=users.map(u=>({nickname:u.nickname,score:Object.entries(winners).filter(([c,w])=>toArr((allPreds[u.nickname]||{})[c]).some(p=>toArr(w).includes(p))).length}));
+      const current={year,winners,scores,savedAt:new Date().toISOString()};
+      const all=[...stored.filter(h=>h.year!==year),current];
+      const blob=new Blob([JSON.stringify(all,null,2)],{type:"application/json"});
+      const a=document.createElement("a");
+      a.href=URL.createObjectURL(blob); a.download=`oscars_history_${year}.json`; a.click();
+    } catch(e){console.error(e);}
+    setBusy(false);
+  };
+  return (
+    <button onClick={run} disabled={busy}
+      style={{background:busy?"rgba(201,168,76,0.1)":`linear-gradient(135deg, ${GOLD}, #a07828)`,border:"none",borderRadius:10,padding:"11px 18px",color:busy?"rgba(255,255,255,0.4)":"#070710",fontSize:13,fontWeight:700,cursor:busy?"default":"pointer",width:"100%",fontFamily:"'Inter', sans-serif",transition:"all 0.2s"}}>
+      {busy?"Preparing…":"⬇️ Download oscars_history.json"}
+    </button>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // AWARDS VIEW  (My Card + Badges)
 // ═══════════════════════════════════════════════════════════════════════════════
 function AwardsView({ myNick, users, allPreds, winners, categories }) {
   const [tab, setTab] = useState("card");
-  const totalWinners = Object.keys(winners).length;
-  const myPreds = allPreds[myNick] || {};
-  const myScore = Object.entries(winners).filter(([c,w]) => myPreds[c]===w).length;
-  const pct = totalWinners>0 ? Math.round((myScore/totalWinners)*100) : 0;
+  const totalWinners=Object.keys(winners).length;
+  const myPreds=allPreds[myNick]||{};
+  // FIX 3 — score uses toArr
+  const myScore=Object.entries(winners).filter(([c,w])=>toArr(myPreds[c]).some(p=>toArr(w).includes(p))).length;
+  const pct=totalWinners>0?Math.round((myScore/totalWinners)*100):0;
 
   const ts=(t)=>({padding:"8px 16px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,fontFamily:"'Inter', sans-serif",letterSpacing:"0.04em",background:tab===t?`linear-gradient(135deg, ${GOLD}, #a07828)`:"rgba(255,255,255,0.06)",color:tab===t?"#07070f":"rgba(255,255,255,0.4)",transition:"all 0.2s"});
 
-  const userAchievements = users.map(u => ({
-    user: u,
-    badges: ACHIEVEMENTS.filter(a => a.check(u.nickname, allPreds, winners, users, categories))
+  const userAchievements=users.map(u=>({
+    user:u,
+    badges:ACHIEVEMENTS.filter(a=>a.check(u.nickname,allPreds,winners,users,categories))
   }));
 
   return (
@@ -888,32 +936,39 @@ function AwardsView({ myNick, users, allPreds, winners, categories }) {
 
       {tab==="card" && (
         <div style={{padding:"0 14px"}}>
+          {/* FIX 2 — removed "YOUR WRAP" label; "out of" instead of "/" */}
           <div style={{background:"linear-gradient(135deg, #1a1330, #0e1628)",borderRadius:16,padding:"24px 20px",marginBottom:12,border:`1px solid ${BORDER}`,textAlign:"center"}}>
-            <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",letterSpacing:"0.15em",marginBottom:8}}>OSCARS 2026 · YOUR WRAP</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",letterSpacing:"0.15em",marginBottom:8}}>OSCARS 2026 · PREDICTION RESULTS</div>
             <div style={{fontSize:34,fontWeight:700,color:GOLD,fontFamily:"'Cormorant Garamond', serif",lineHeight:1}}>{myNick}</div>
             <div style={{width:40,height:1,background:`linear-gradient(90deg, transparent, ${GOLD}, transparent)`,margin:"12px auto"}} />
             <div style={{fontSize:58,fontWeight:700,color:GOLD,fontFamily:"'Cormorant Garamond', serif",lineHeight:1}}>{myScore}</div>
-            <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",marginTop:4}}>/{totalWinners} correct · {pct}%</div>
+            {/* FIX 2 — "out of" */}
+            <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",marginTop:4}}>out of {totalWinners} correct · {pct}%</div>
             <div style={{marginTop:14,height:4,background:"rgba(255,255,255,0.06)",borderRadius:6,overflow:"hidden"}}>
               <div style={{width:`${pct}%`,height:"100%",background:`linear-gradient(90deg, ${GOLD}, #6be89a)`,borderRadius:6,transition:"width 0.6s ease"}} />
             </div>
-            {totalWinners===0 && <div style={{fontSize:11,color:"rgba(255,255,255,0.2)",marginTop:10}}>Your card fills in as winners are announced</div>}
+            {totalWinners===0&&<div style={{fontSize:11,color:"rgba(255,255,255,0.2)",marginTop:10}}>Your card fills in as winners are announced</div>}
           </div>
 
-          {categories.map(cat => {
-            const myPick=myPreds[cat.id], winner=winners[cat.id];
-            const correct=myPick&&winner&&myPick===winner;
-            const wrong=myPick&&winner&&myPick!==winner;
+          {categories.map(cat=>{
+            // FIX 3 — use toArr for my picks and winner comparison
+            const rawPick=myPreds[cat.id];
+            const pickArr=toArr(rawPick);
+            const winArr=toArr(winners[cat.id]);
+            const correct=pickArr.length>0&&winArr.length>0&&pickArr.some(p=>winArr.includes(p));
+            const wrong=pickArr.length>0&&winArr.length>0&&!pickArr.some(p=>winArr.includes(p));
+            const displayPick=pickArr.join(" & ");
+            const displayWinner=winArr.join(" & ");
             return (
               <div key={cat.id} style={{background:CARD2,borderRadius:10,padding:"10px 13px",marginBottom:5,border:`1px solid ${correct?"rgba(107,232,154,0.2)":wrong?"rgba(255,100,100,0.1)":"rgba(255,255,255,0.04)"}`}}>
                 <div style={{fontSize:10,color:"rgba(255,255,255,0.28)",letterSpacing:"0.05em",marginBottom:4}}>{cat.emoji} {cat.name.toUpperCase()}</div>
-                {myPick ? (
+                {displayPick ? (
                   <div>
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <span style={{fontSize:13,color:correct?"#6be89a":wrong?"#ff7070":"rgba(255,255,255,0.5)",fontWeight:(correct||wrong)?600:400,flex:1,lineHeight:1.35}}>{myPick}</span>
+                      <span style={{fontSize:13,color:correct?"#6be89a":wrong?"#ff7070":"rgba(255,255,255,0.5)",fontWeight:(correct||wrong)?600:400,flex:1,lineHeight:1.35}}>{displayPick}</span>
                       <span style={{fontSize:15,flexShrink:0}}>{correct?"✓":wrong?"✗":"·"}</span>
                     </div>
-                    {wrong&&winner&&<div style={{fontSize:11,color:GOLD,marginTop:3}}>🏆 {winner}</div>}
+                    {wrong&&displayWinner&&<div style={{fontSize:11,color:GOLD,marginTop:3}}>🏆 {displayWinner}</div>}
                   </div>
                 ) : (
                   <div style={{fontSize:13,color:"rgba(255,255,255,0.2)",fontStyle:"italic"}}>No prediction submitted</div>
@@ -927,20 +982,20 @@ function AwardsView({ myNick, users, allPreds, winners, categories }) {
 
       {tab==="badges" && (
         <div style={{padding:"0 14px"}}>
-          {totalWinners<5 && (
+          {totalWinners<5&&(
             <div style={{textAlign:"center",padding:"20px",background:CARD2,borderRadius:12,marginBottom:12,border:`1px solid ${BORDER}`}}>
               <div style={{fontSize:36}}>🏅</div>
               <div style={{fontSize:13,color:"rgba(255,255,255,0.3)",marginTop:8,lineHeight:1.6}}>Badges unlock as winners are announced.<br/>Check back during the ceremony!</div>
             </div>
           )}
-          {userAchievements.map(({user,badges}) => (
+          {userAchievements.map(({user,badges})=>(
             <div key={user.nickname} style={{background:CARD2,borderRadius:12,padding:"13px 14px",marginBottom:8,border:`1px solid ${user.nickname===myNick?"rgba(201,168,76,0.2)":"rgba(255,255,255,0.05)"}`}}>
               <div style={{fontSize:13,fontWeight:600,color:user.nickname===myNick?GOLD:"#e8e8e8",marginBottom:badges.length?10:4}}>
                 {user.nickname}{user.nickname===myNick?" (you)":""}{user.isAdmin?" 👑":""}
               </div>
-              {badges.length>0 ? (
+              {badges.length>0?(
                 <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                  {badges.map(badge => (
+                  {badges.map(badge=>(
                     <div key={badge.id} style={{display:"flex",alignItems:"flex-start",gap:10,background:"rgba(255,255,255,0.03)",borderRadius:8,padding:"8px 10px"}}>
                       <span style={{fontSize:22,lineHeight:1,flexShrink:0}}>{badge.icon}</span>
                       <div>
@@ -950,7 +1005,7 @@ function AwardsView({ myNick, users, allPreds, winners, categories }) {
                     </div>
                   ))}
                 </div>
-              ) : (
+              ):(
                 <div style={{fontSize:11,color:"rgba(255,255,255,0.2)",fontStyle:"italic"}}>
                   {totalWinners>=5?"No badges earned yet":""}
                 </div>
@@ -965,26 +1020,39 @@ function AwardsView({ myNick, users, allPreds, winners, categories }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// HISTORY VIEW
+// HISTORY VIEW  — FIX 6: export button for all users
 // ═══════════════════════════════════════════════════════════════════════════════
 function HistoryView({ historyData, onDeleteYear }) {
-  const MEDALS = ["🥇","🥈","🥉"];
+  const MEDALS=["🥇","🥈","🥉"];
   const [confirmYear, setConfirmYear] = React.useState(null);
 
-  const doDelete = async (yr) => {
-    await onDeleteYear(yr);
-    setConfirmYear(null);
+  // FIX 6 — export available to all users
+  const exportHistory = () => {
+    if(!historyData?.length) return;
+    const blob=new Blob([JSON.stringify(historyData,null,2)],{type:"application/json"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob); a.download="oscars_history.json"; a.click();
   };
-  if (!historyData?.length) return (
+
+  const doDelete = async (yr) => { await onDeleteYear(yr); setConfirmYear(null); };
+
+  if(!historyData?.length) return (
     <div style={{textAlign:"center",padding:"70px 24px",color:"rgba(255,255,255,0.25)"}}>
       <div style={{fontSize:52}}>📅</div>
       <div style={{marginTop:18,fontSize:15,fontFamily:"'Cormorant Garamond', serif",color:"rgba(255,255,255,0.35)"}}>No history yet</div>
       <div style={{marginTop:8,fontSize:12,lineHeight:1.7}}>After each ceremony, the admin saves results.<br/>They'll appear here every year.</div>
     </div>
   );
+
   return (
     <div style={{padding:"10px 14px"}}>
-      {[...historyData].reverse().map(entry => {
+      {/* FIX 6 — export button */}
+      <button onClick={exportHistory}
+        style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",marginBottom:14,padding:"11px",background:"rgba(255,255,255,0.05)",border:`1px solid ${BORDER}`,borderRadius:12,color:GOLD,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Inter', sans-serif"}}>
+        ⬇️ Export history as JSON
+      </button>
+
+      {[...historyData].reverse().map(entry=>{
         const sorted=[...entry.scores].sort((a,b)=>b.score-a.score);
         const total=Object.keys(entry.winners||{}).length;
         return (
@@ -993,23 +1061,24 @@ function HistoryView({ historyData, onDeleteYear }) {
               <div style={{fontSize:22,fontWeight:700,color:GOLD,fontFamily:"'Cormorant Garamond', serif"}}>🏆 Oscars {entry.year}</div>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <div style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>{new Date(entry.savedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>
-                {onDeleteYear && (
-                  confirmYear === entry.year
-                    ? <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                {onDeleteYear&&(
+                  confirmYear===entry.year
+                    ?<div style={{display:"flex",gap:6,alignItems:"center"}}>
                         <span style={{fontSize:11,color:"rgba(255,100,100,0.7)"}}>Remove?</span>
                         <button onClick={()=>doDelete(entry.year)} style={{background:"rgba(200,40,40,0.2)",border:"1px solid rgba(200,40,40,0.4)",borderRadius:6,padding:"3px 9px",color:"#ff8080",cursor:"pointer",fontSize:11,fontWeight:600}}>Yes</button>
                         <button onClick={()=>setConfirmYear(null)} style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:6,padding:"3px 9px",color:"rgba(255,255,255,0.35)",cursor:"pointer",fontSize:11}}>No</button>
                       </div>
-                    : <button onClick={()=>setConfirmYear(entry.year)} style={{background:"rgba(200,40,40,0.07)",border:"1px solid rgba(200,40,40,0.15)",borderRadius:6,padding:"4px 8px",color:"rgba(255,100,100,0.4)",cursor:"pointer",fontSize:12,lineHeight:1}}>🗑️</button>
+                    :<button onClick={()=>setConfirmYear(entry.year)} style={{background:"rgba(200,40,40,0.07)",border:"1px solid rgba(200,40,40,0.15)",borderRadius:6,padding:"4px 8px",color:"rgba(255,100,100,0.4)",cursor:"pointer",fontSize:12,lineHeight:1}}>🗑️</button>
                 )}
               </div>
             </div>
-            {sorted.map((s,i) => (
+            {sorted.map((s,i)=>(
               <div key={s.nickname} style={{display:"flex",alignItems:"center",padding:"8px 0",borderBottom:i<sorted.length-1?"1px solid rgba(255,255,255,0.05)":"none",gap:12}}>
                 <span style={{width:28,fontSize:i<3?20:13,textAlign:"center",color:i>=3?"rgba(255,255,255,0.3)":undefined,fontWeight:700}}>{i<3?MEDALS[i]:`${i+1}.`}</span>
                 <span style={{flex:1,fontWeight:i===0?700:400,color:i===0?GOLD:"rgba(255,255,255,0.7)",fontSize:14}}>{s.nickname}</span>
+                {/* FIX 2 — "out of" in history */}
                 <span style={{color:GOLD,fontWeight:700,fontFamily:"'Cormorant Garamond', serif",fontSize:17}}>
-                  {s.score}<span style={{color:"rgba(255,255,255,0.25)",fontFamily:"'Inter'",fontWeight:400,fontSize:11}}>/{total}</span>
+                  {s.score}<span style={{color:"rgba(255,255,255,0.3)",fontFamily:"'Inter'",fontWeight:400,fontSize:11}}> out of {total}</span>
                 </span>
                 <span style={{fontSize:11,color:"rgba(255,255,255,0.3)",width:35,textAlign:"right"}}>{total>0?Math.round((s.score/total)*100):0}%</span>
               </div>
@@ -1021,7 +1090,6 @@ function HistoryView({ historyData, onDeleteYear }) {
   );
 }
 
-// ─── Mount ────────────────────────────────────────────────────────────────────
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
 </body>
